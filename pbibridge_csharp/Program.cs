@@ -1730,7 +1730,7 @@ namespace PBIBridgeCSharp {
             System.IO.Directory.SetCurrentDirectory(System.AppContext.BaseDirectory);
 
             Console.WriteLine("======================================");
-            Console.WriteLine("🚀 PBI Visual Explorer - 背景伺服器啟動中...");
+            Console.WriteLine("PBI AI Bridge - 服務啟動中...");
             Console.WriteLine("======================================");
 
             var builder = WebApplication.CreateBuilder(args);

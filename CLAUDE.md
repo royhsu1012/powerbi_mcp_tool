@@ -656,6 +656,8 @@ PBI_AI_Bridge/
 ├── .claude/
 │   ├── settings.json              ← PreToolUse hook 設定
 │   └── hooks/guard-data-access.ps1 ← 擋掉「直接連 ADOMD 繞過橋接服務」那條路
+│                                     ⚠️ stdin 必須以 UTF-8 讀取：用系統碼頁（cp950）讀，專案路徑的中文會讓
+│                                        JSON 解析失敗，而腳本解析失敗時是放行 —— hook 會變成全部放行而且毫無徵兆
 ├── audit/                         ← 查詢稽核記錄（每月一檔，TSV，服務自動建立）
 │                                     只記查詢文字與判定結果，不記回傳值
 ├── snapshots/                     ← 模型快照，每個模型一個子資料夾（服務自動建立）

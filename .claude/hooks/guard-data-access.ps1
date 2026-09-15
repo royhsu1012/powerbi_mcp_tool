@@ -14,7 +14,11 @@
 # 攔截時：exit 2 → 工具呼叫被擋下，stderr 內容會回饋給 Claude。
 # =============================================================================
 
-$raw = [Console]::In.ReadToEnd()
+# Claude Code 以 UTF-8 送 stdin、讀 stderr。PowerShell 5.1 預設用系統碼頁（繁中是 cp950），
+# 直接用 [Console]::In / Error 的話，攔截訊息會變亂碼。改成自己以 UTF-8 讀寫原始串流 ——
+# 不去設定 [Console]::InputEncoding，因為 hook 行程通常沒有主控台，設定會丟例外、讓整支腳本失效。
+$utf8 = New-Object System.Text.UTF8Encoding $false
+$raw = (New-Object System.IO.StreamReader([Console]::OpenStandardInput(), $utf8)).ReadToEnd()
 if (-not $raw) { exit 0 }
 
 try { $payload = $raw | ConvertFrom-Json } catch { exit 0 }
@@ -56,7 +60,10 @@ foreach ($rule in $rules) {
 讓伺服器端的欄位管制生效。若這次確實有正當理由需要例外，
 請停下來向使用者說明你想做什麼、為什麼，由使用者自行執行。
 "@
-        [Console]::Error.WriteLine($msg)
+        $bytes = $utf8.GetBytes($msg + [Environment]::NewLine)
+        $err = [Console]::OpenStandardError()
+        $err.Write($bytes, 0, $bytes.Length)
+        $err.Flush()
         exit 2
     }
 }
