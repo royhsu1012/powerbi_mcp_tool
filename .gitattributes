@@ -1,0 +1,6 @@
+# 其餘文字檔交給 git 自動判斷
+* text=auto
+
+# Windows 批次檔一律 CRLF：cmd.exe 讀 LF 行尾的 .bat 時，goto 找標籤會錯位
+*.bat text eol=crlf
+*.ps1 text eol=crlf

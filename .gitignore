@@ -1,0 +1,31 @@
+# 忽略 .NET 編譯產生的二進位與暫存檔
+# ⚠️ bin/ 底下有一份 appsettings.json 的建置副本，裡面是同一把 API Key —— 一定要排除
+pbibridge_csharp/bin/
+pbibridge_csharp/obj/
+
+# 忽略可能不小心存放的大型 Power BI 檔案
+*.pbix
+*.pbip
+
+# 作業系統快取檔
+.DS_Store
+Thumbs.db
+
+# 隱藏個人環境配置與私鑰，防止資安外洩
+pbibridge_csharp/appsettings.json
+
+# 隱藏除錯用的暫存資料庫與本機捷徑
+pbibridge_csharp/update_payload.json
+*_捷徑.bat
+pbi_schema_data.js
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 模型產物 —— 這些是「你操作過哪些模型」的完整紀錄，不是工具的一部分
+#   snapshots/         TMSL 快照：完整表結構、欄位、全部 DAX 量值
+#   PowerQuery_Scripts/  M 腳本備份：連線字串、伺服器位址、資料庫名稱
+#   audit/             查詢稽核：查過哪些表與欄位、什麼時間查的
+# 這些都會在需要時自動重建，絕對不要進版控或跟著散佈。
+# ─────────────────────────────────────────────────────────────────────────────
+snapshots/
+PowerQuery_Scripts/
+audit/

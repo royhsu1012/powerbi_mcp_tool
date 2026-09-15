@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PBI AI Bridge API 文件</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #818cf8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --warning: #f59e0b;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 20px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            gap: 20px;
+            flex-wrap: wrap;
+        }
+
+        .title-box h1 { margin: 0; font-size: 26px; font-weight: 700; background: -webkit-linear-gradient(45deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;}
+        .title-box p { margin: 8px 0 0; font-size: 15px; color: var(--text-muted); }
+
+        .back-btn {
+            background: rgba(255,255,255,0.1); color: white;
+            border: 1px solid var(--glass-border); border-radius: 8px; padding: 10px 20px;
+            font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.3s;
+            text-decoration: none; display: flex; align-items: center; gap: 8px;
+            white-space: nowrap;
+        }
+        .back-btn:hover { background: rgba(255,255,255,0.2); }
+
+        .container {
+            max-width: 1200px; margin: 40px auto; padding: 0 20px;
+            flex: 1; display: grid; gap: 30px;
+        }
+
+        .section-title {
+            font-size: 22px; font-weight: 600; color: white; margin: 10px 0;
+            display: flex; align-items: center; gap: 10px;
+            border-bottom: 1px solid var(--glass-border); padding-bottom: 15px;
+        }
+        .section-title i { color: var(--primary); }
+        .section-title .count { font-size: 13px; color: var(--text-muted); font-weight: 400; margin-left: auto; }
+
+        .api-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;
+        }
+
+        .api-card {
+            background: var(--glass-bg); backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border); border-radius: 12px;
+            padding: 25px; box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            transition: all 0.3s ease; position: relative; overflow: hidden;
+        }
+        .api-card:hover {
+            transform: translateY(-5px); border-color: rgba(56,189,248, 0.4);
+            box-shadow: 0 15px 40px rgba(0,0,0,0.2);
+        }
+        .api-card::before {
+            content: ''; position: absolute; top: 0; left: 0; width: 4px; height: 100%;
+            background: linear-gradient(to bottom, var(--primary), var(--accent));
+            opacity: 0; transition: 0.3s;
+        }
+        .api-card:hover::before { opacity: 1; }
+        .api-card.destructive::before { background: linear-gradient(to bottom, var(--danger), var(--warning)); opacity: 0.6; }
+        .api-card.destructive:hover::before { opacity: 1; }
+
+        .badges { display: flex; gap: 8px; margin-bottom: 15px; flex-wrap: wrap; }
+        .method-badge {
+            display: inline-block; padding: 4px 10px; border-radius: 6px;
+            font-size: 12px; font-weight: 700;
+        }
+        .method-get  { background: rgba(16, 185, 129, 0.15); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.3); }
+        .method-post { background: rgba(56, 189, 248, 0.15); color: #7dd3fc; border: 1px solid rgba(56, 189, 248, 0.3); }
+        .tag-danger  { background: rgba(239, 68, 68, 0.15);  color: #fca5a5; border: 1px solid rgba(239, 68, 68, 0.3); }
+        .tag-safe    { background: rgba(148, 163, 184, 0.12); color: #cbd5e1; border: 1px solid rgba(148, 163, 184, 0.25); }
+
+        .api-card h3 { margin: 0 0 10px; font-size: 18px; color: white; font-family: monospace; word-break: break-all; }
+        .api-card h4 { margin: 0 0 12px; font-size: 15px; color: var(--text-muted); font-weight: 400; }
+        .api-card p  { margin: 0; font-size: 14px; color: #cbd5e1; line-height: 1.6; }
+        .api-card p + p { margin-top: 10px; }
+
+        .highlight { color: var(--primary); font-weight: 600; }
+        .ps { display: block; margin-top: 12px; font-family: monospace; font-size: 12.5px;
+              color: #a5b4fc; background: rgba(0,0,0,0.25); padding: 8px 10px; border-radius: 6px;
+              overflow-x: auto; white-space: pre; }
+        .warn { display: block; margin-top: 10px; font-size: 13px; color: #fcd34d; line-height: 1.55; }
+
+        .callout {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.25);
+            border-radius: 12px; padding: 20px 25px;
+        }
+        .callout h3 { margin: 0 0 12px; font-size: 17px; color: #fcd34d; display: flex; align-items: center; gap: 10px; }
+        .callout p, .callout li { font-size: 14px; color: #e2e8f0; line-height: 1.7; margin: 0; }
+        .callout ul { margin: 10px 0 0; padding-left: 22px; }
+        .callout code { font-family: monospace; color: var(--primary); }
+
+        table.refresh-table { width: 100%; border-collapse: collapse; margin-top: 12px; font-size: 13.5px; }
+        table.refresh-table th, table.refresh-table td {
+            text-align: left; padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.08);
+        }
+        table.refresh-table th { color: var(--text-muted); font-weight: 600; }
+        table.refresh-table td code { font-family: monospace; color: var(--primary); }
+
+        .footer {
+            text-align: center; padding: 20px; border-top: 1px solid var(--glass-border);
+            color: var(--text-muted); font-size: 12px; margin-top: 40px;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-box">
+            <h1><i class="fa-solid fa-server"></i> PBI AI Bridge API 文件</h1>
+            <p>38 個端點 &middot; 支援同時操作多個 Power BI &middot; 全域受 X-API-Key 保護（<code>/ping</code> 除外）&middot; 僅綁 localhost:5500</p>
+        </div>
+        <a href="PowerBI_Visualizer.html" class="back-btn"><i class="fa-solid fa-arrow-left"></i> 返回動態探索儀表板</a>
+    </header>
+
+    <div class="container">
+
+        <!-- ================= 多實例 ================= -->
+        <div class="callout" style="background:rgba(56,189,248,0.08); border-color:rgba(56,189,248,0.3)">
+            <h3 style="color:var(--primary)"><i class="fa-solid fa-window-restore"></i> 這是通用工具：先選定要操作哪一個 Power BI</h3>
+            <p>一台機器可以同時開好幾個 Power BI Desktop，每一個都有自己的 <code>msmdsrv</code> 子行程與連接埠。
+               本服務**不綁定**任何特定檔案 —— 所有路徑都在每次請求時從執行中的行程即時推導
+               （<code>msmdsrv.ParentProcessId</code> → <code>PBIDesktop</code> → 命令列 → 開啟的檔案）。</p>
+            <p style="margin-top:12px">請求用 <code>X-PBI-Target</code> 標頭指定目標，值可以是 <strong>Port 數字</strong>或<strong>檔名/路徑片段</strong>：</p>
+            <ul>
+                <li><strong>只有一個實例</strong> → 可以不帶，自動採用</li>
+                <li><strong>多個實例卻沒指定</strong> → 一律回 <strong>400</strong> 並列出清單，<u>連讀取也拒絕</u>。
+                    猜錯的代價是改到別的模型，所以寧可回錯誤也不預設挑一個</li>
+                <li>片段同時符合多個 → 回 400，要求改用 Port 精確指定</li>
+            </ul>
+            <p style="margin-top:12px">⚠️ HTTP 標頭只能放 ASCII，中文檔名不能直接當標頭值 ——
+               <code>Use-PbiInstance</code> 內部一律換算成 Port 再送出，並記住完整路徑，
+               PBI 關掉重開（Port 會變）時自動重新解析。</p>
+        </div>
+
+        <!-- ================= 使用須知 ================= -->
+        <div class="callout">
+            <h3><i class="fa-solid fa-triangle-exclamation"></i> 開始之前，兩件必須知道的事</h3>
+            <p><strong>1. 寫入只進記憶體，不會自動存檔。</strong>
+               TOM 的 <code>SaveChanges()</code> 只改 Power BI Desktop 記憶體中的模型。要落到 <code>.pbix</code>/<code>.pbip</code>
+               必須呼叫 <code>/api/save</code>，並確認回傳的 <code>fileChanged</code> 為 <code>true</code>。</p>
+            <p style="margin-top:12px"><strong>2. 結構性變更後必須重算，否則查不到資料。</strong>
+               只寫量值不用重算；但建立計算表、關聯線、計算項目之後，不跑 <code>/api/refresh</code>
+               查詢就會回「需要重新計算，因此未包含任何資料」。</p>
+            <table class="refresh-table">
+                <tr><th>做了什麼</th><th>要跑什麼</th><th>耗時</th></tr>
+                <tr><td>建立計算表 / 計算項目</td><td><code>refresh</code>（指定該表）</td><td>秒級</td></tr>
+                <tr><td>建立或修改關聯線 / 計算資料行</td><td><code>refresh</code> + <code>RefreshType: "calculate"</code></td><td>秒級</td></tr>
+                <tr><td>改寫 M 腳本</td><td><code>refresh</code>（該表，full）</td><td><strong>可能很久</strong>，要重抓資料源</td></tr>
+            </table>
+        </div>
+
+        <!-- ================= 第壹部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-magnifying-glass-chart"></i> 第壹部：讀取與診斷
+                <span class="count">GET &middot; 唯讀，隨時可呼叫</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span><span class="method-badge tag-safe">免 Key</span></div>
+                    <h3>/ping</h3>
+                    <h4>健康檢查</h4>
+                    <p>回傳 <code>pong</code> 代表服務就緒。這是唯一不需要 <span class="highlight">X-API-Key</span> 的端點。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/schema</h3>
+                    <h4>全域結構掃描</h4>
+                    <p>所有資料表、欄位（含資料類型、DisplayFolder、SortByColumn）、DAX 量值原始碼、計算項目，以及 Power Query M 腳本。</p>
+                    <span class="warn"><i class="fa-solid fa-shield-halved"></i> M 腳本含連線字串與伺服器位址，非必要不要整包倒進 AI 的對話。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/relationships</h3>
+                    <h4>關聯模型透視</h4>
+                    <p>所有關聯線的來源／目標欄位、基數、跨篩選方向、是否啟用。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span><span class="method-badge tag-safe">切換檔案的第一站</span></div>
+                    <h3>/api/instances</h3>
+                    <h4>列出所有執行中的 Power BI</h4>
+                    <p>每個實例回傳 <code>Port</code>、<code>PbiPid</code>、<code>MsmdsrvPid</code>、
+                       <code>FilePath</code>、<code>FileName</code>、<code>WindowTitle</code>、
+                       <code>Kind</code>（PBIX / PBIP / Unknown）。</p>
+                    <p>這是唯一<span class="highlight">不需要指定目標</span>的實例相關端點 —— 你得先看到清單才能選。</p>
+                    <span class="ps">PowerShell：Get-PbiInstances / Use-PbiInstance &lt;片段或 Port&gt;</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/pbi-info</h3>
+                    <h4>你到底在改哪個檔案</h4>
+                    <p>回報<span class="highlight">目前這次請求解析到的目標實例</span>：檔案路徑、格式、Port、行程 ID。</p>
+                    <p>同一台機器常有多份同名 .pbip / .pbix（例如桌面一份、專案資料夾一份）——
+                       動手前先確認，改錯檔案比改錯公式難救。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/validate</h3>
+                    <h4>模型健檢</h4>
+                    <p>引擎回報的壞掉公式、雙向／多對多關聯、停用關聯、跨表重複的量值名稱、沒有格式字串的量值、孤島表、自動日期表數量、疑似沒人用的欄位、用了彙總函式的計算資料行。</p>
+                    <span class="warn">只有 <code>BrokenObjects</code> 是「確定壞掉」（引擎回報），其餘皆為建議。<code>PossiblyUnusedColumns</code> 只比對 DAX 文字，未涵蓋報表視覺，刪除前務必人工確認。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/model-props</h3>
+                    <h4>模型層級屬性</h4>
+                    <p>模型名稱、<code>DiscourageImplicitMeasures</code>、相容性層級、計算群組數量。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/roles</h3>
+                    <h4>RLS 角色清單</h4>
+                    <p>所有資料列層級安全性角色、權限等級，以及每個角色的資料表篩選規則。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/expressions</h3>
+                    <h4>Power Query 共用運算式</h4>
+                    <p>模型層級的 M 參數與共用函式（不屬於任何單一資料表的那些）。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-get">GET</span></div>
+                    <h3>/api/snapshots</h3>
+                    <h4>快照清單</h4>
+                    <p>只列出<span class="highlight">目標實例自己的</span>快照，最新的排最前面。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第貳部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-terminal"></i> 第貳部：查詢引擎
+                <span class="count">POST &middot; 唯讀，寫完量值用來驗算</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/query</h3>
+                    <h4>唯讀 DAX 查詢</h4>
+                    <p>查詢<span class="highlight">必須以 EVALUATE 或 DEFINE 開頭</span>（唯讀防護，擋掉會變更模型的 XMLA 命令）。回傳欄位清單、列數、是否截斷，以及 <code>ElapsedMs</code>。</p>
+                    <p>DAX 語法錯誤回 <strong>400</strong>，body 含引擎原始訊息與錯誤位置，可直接據此修正公式。</p>
+                    <span class="ps">{ "Query": "EVALUATE ...", "MaxRows": 1000, "TimeoutSeconds": 60 }</span>
+                    <span class="warn"><i class="fa-solid fa-shield-halved"></i> <strong>資料保護（伺服器端強制）</strong>：客戶身分欄位只准出現在計數類函式內（<code>DISTINCTCOUNT</code>／<code>COUNTROWS</code>…），金額欄位必須包在聚合函式內，違者回 <strong>403</strong>。管制清單見 <code>appsettings.json</code> 的 <code>DataProtection</code>。被擋下時服務主控台會印出一次性權杖，經使用者確認後以 <code>X-PBI-Allow-Detail</code> 標頭放行「同一句」查詢（10 分鐘、限用一次）。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/dmv</h3>
+                    <h4>系統檢視查詢</h4>
+                    <p>執行 <code>$SYSTEM</code> DMV，用於效能分析與相依性追蹤。這些檢視只含中繼資料與統計，<span class="highlight">不會回傳事實資料列</span>。</p>
+                    <p>格式必須是 <code>SELECT ... FROM $SYSTEM.&lt;檢視&gt;</code>，白名單以外一律拒絕。</p>
+                    <span class="ps">SELECT DIMENSION_NAME, COLUMN_ID, USED_SIZE
+FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
+                    <span class="warn"><code>$SYSTEM.TMSCHEMA_PARTITIONS</code> 會回傳 M 腳本（含連線字串），非必要不要查它。</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第參部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-life-ring"></i> 第參部：安全網
+                <span class="count">破壞性操作前先做這個</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/snapshot</h3>
+                    <h4>模型快照</h4>
+                    <p>把整個模型定義序列化成 TMSL JSON 存檔，附時間戳與自訂標籤。刪除、改名、覆寫 M 腳本之前都該先跑一次。</p>
+                    <p><strong>每個模型有自己的資料夾</strong>：<code>snapshots/&lt;檔名&gt;_&lt;路徑雜湊&gt;/</code>。
+                       路徑雜湊是必要的 —— 桌面的 <code>X.pbix</code> 和專案裡的 <code>X.pbip</code>
+                       檔名相同但是<span class="highlight">完全不同的模型</span>，混在一起會互相污染。</p>
+                    <span class="ps">{ "Label": "before-refactor" }</span>
+                </div>
+                <div class="api-card destructive">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">會刪東西</span></div>
+                    <h3>/api/restore</h3>
+                    <h4>從快照還原</h4>
+                    <p>還原量值、計算資料行、關聯線、M 腳本、共用運算式。支援 <code>DryRun</code> 先看差異清單。</p>
+                    <span class="warn"><strong>還原不是合併，是回到當時的狀態</strong> — 快照中不存在的量值與關聯<u>會被刪掉</u>。<br>
+                    另外它<u>不會刪除表格與角色</u>，也不改模型層級屬性；沒被涵蓋的項目會列在回應的 <code>Uncovered</code> 裡，別忽略。</span>
+                    <span class="warn"><i class="fa-solid fa-shield-halved"></i> 只在<strong>目標模型自己的</strong>快照資料夾裡找檔案，
+                    路徑分隔字元一律拒絕 —— 結構上就不可能把 A 模型的快照還原到 B 模型。</span>
+                    <span class="ps">{ "File": "20260805_121110__before.json", "DryRun": true }</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第肆部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-bolt"></i> 第肆部：讓變更生效
+                <span class="count">不跑這兩個，改了等於沒改</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/refresh</h3>
+                    <h4>重新整理資料</h4>
+                    <p>不指定 <code>TableName</code> 就是整個模型。<code>RefreshType</code> 可用
+                       <code>full</code>／<code>calculate</code>／<code>dataOnly</code>／<code>automatic</code>／
+                       <code>add</code>／<code>clearValues</code>／<code>defragment</code>。</p>
+                    <p><code>calculate</code> 只重算 DAX、不重抓資料源，很便宜 — 結構性變更後直接跑一次就好。</p>
+                    <span class="ps">{ "TableName": "銷售", "RefreshType": "full" }</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/save</h3>
+                    <h4>模擬 Ctrl+S 存檔</h4>
+                    <p>把<span class="highlight">目標那一個</span> PBI Desktop 帶到前景送出 Ctrl+S，再比對檔案修改時間驗證是否真的存到。</p>
+                    <p>驗證對象是該實例自己的檔案；<code>.pbix</code> 直接看單一檔案時間，
+                       <code>.pbip</code> 則掃整個專案資料夾（存檔會散落在 <code>.Report</code> / <code>.SemanticModel</code>）。</p>
+                    <span class="warn">一定要看回傳的 <code>fileChanged</code>。<code>false</code> 代表沒存到（或本來就沒有待存變更），不要當成成功。<br>
+                    會短暫搶走鍵盤焦點 — 這是 SendKeys 的固有限制。</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第伍部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-calculator"></i> 第伍部：量值與資料行
+                <span class="count">POST &middot; 會改動模型</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-measure</h3>
+                    <h4>新增或覆寫量值</h4>
+                    <p>同名者直接覆蓋。可設定 DAX 公式、格式字串、說明、<span class="highlight">DisplayFolder</span> 與 IsHidden。未指定的屬性維持原值。</p>
+                    <span class="ps">{ "TableName": "量值", "MeasureName": "銷售總額",
+  "Expression": "SUM(f[Amount])", "FormatString": "#,0",
+  "DisplayFolder": "核心指標" }</span>
+                </div>
+                <div class="api-card destructive">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">不可復原</span></div>
+                    <h3>/api/delete-measure</h3>
+                    <h4>刪除量值</h4>
+                    <p>刪除指定量值。<strong>無法復原</strong> — 執行前先建快照。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/move-measure</h3>
+                    <h4>量值搬家</h4>
+                    <p>把量值從 A 表搬到 B 表，公式與所有屬性一併帶走。若目標表不存在，會<span class="highlight">自動建立一張量值專用空殼表</span>。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/add-column</h3>
+                    <h4>新增計算資料行</h4>
+                    <p>用 DAX 新增計算資料行。<code>DataType</code> 可用 text／int／decimal／currency／bool／date。同名計算資料行會被覆寫。</p>
+                    <span class="warn">新增後需要 <code>refresh</code>（calculate）才會有值。</span>
+                </div>
+                <div class="api-card destructive">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">不可復原</span></div>
+                    <h3>/api/delete-column</h3>
+                    <h4>刪除資料行</h4>
+                    <p>仍被關聯線使用時<span class="highlight">會被擋下</span>，需先刪關聯。</p>
+                    <span class="warn">若刪的是來源資料行（非計算），下次重新整理時可能會依 M 腳本重新出現。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/set-column-props</h3>
+                    <h4>資料行屬性</h4>
+                    <p>格式字串、DisplayFolder、隱藏、<span class="highlight">SortByColumn</span>、SummarizeBy、資料類別、說明。只送出有指定的欄位，其餘維持原值。</p>
+                    <span class="warn">只有計算資料行能改資料類型；來源資料行的類型由 Power Query 決定，要改請改 M 腳本。</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第陸部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-table"></i> 第陸部：表格與改名
+                <span class="count">POST &middot; 結構性變更</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/create-table</h3>
+                    <h4>建立新表格</h4>
+                    <p><code>Kind: "calculated"</code> — 用 DAX 建計算表，資料行由引擎自動推導。<br>
+                       <code>Kind: "m"</code> — 用 M 腳本建表，<strong>必須同時指定 Columns</strong>（引擎不會替 TOM 建立的 M 表推導結構）。<br>
+                       <code>Kind: "measureHolder"</code> — 只放量值的空殼表。</p>
+                    <span class="ps">{ "TableName": "指標", "Kind": "calculated",
+  "Expression": "DATATABLE(\"k\", STRING, {{\"a\"}})" }</span>
+                    <span class="warn">建立後需要 <code>refresh</code> 該表，否則查詢會回「未包含任何資料」。</span>
+                </div>
+                <div class="api-card destructive">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">不可復原</span></div>
+                    <h3>/api/delete-table</h3>
+                    <h4>刪除表格</h4>
+                    <p>連同表上的所有量值一併刪除。仍有關聯線指向它時<span class="highlight">會被擋下</span>並列出是哪幾條。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/rename</h3>
+                    <h4>改名 + 同步改寫 DAX 引用</h4>
+                    <p>支援 <code>measure</code>／<code>column</code>／<code>table</code>。TOM 本身<strong>不會</strong>更新引用，這個端點會掃過全模型的量值、計算資料行、計算表、計算項目與 RLS 篩選式，把引用一起改掉。</p>
+                    <p>回傳完整的 <code>Rewrites</code> 清單（每一筆的 Before／After）。</p>
+                    <span class="warn"><strong>一律先用 <code>DryRun: true</code></strong> 檢視改寫清單，確認沒有誤改再實際執行。</span>
+                    <span class="ps">{ "ObjectType": "measure", "TableName": "量值",
+  "OldName": "銷售額", "NewName": "銷售總額", "DryRun": true }</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第柒部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-diagram-project"></i> 第柒部：關聯線
+                <span class="count">POST &middot; 建模的另一半工作</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-relationship</h3>
+                    <h4>建立或更新關聯</h4>
+                    <p>依來源／目標的表與欄位比對，存在就更新、不存在就新建。可設定基數（<code>one</code>／<code>many</code>）、跨篩選方向（<code>single</code>／<code>both</code>／<code>auto</code>）、是否啟用。</p>
+                    <span class="ps">{ "FromTable": "銷售", "FromColumn": "DateKey",
+  "ToTable": "日期", "ToColumn": "DateKey",
+  "FromCardinality": "many", "ToCardinality": "one",
+  "CrossFilterDirection": "single" }</span>
+                    <span class="warn">建立後需要 <code>refresh</code> + <code>calculate</code> 才能用於查詢。</span>
+                </div>
+                <div class="api-card destructive">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">不可復原</span></div>
+                    <h3>/api/delete-relationship</h3>
+                    <h4>刪除關聯</h4>
+                    <p>以來源／目標的表與欄位四元組指定要刪的關聯線。</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第捌部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-layer-group"></i> 第捌部：進階建模
+                <span class="count">Power Query &middot; 計算群組 &middot; RLS</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3><s>/api/update-m</s></h3>
+                    <h4>已移除（2026-08-06）— M 腳本唯讀</h4>
+                    <p>呼叫會回 <span class="highlight">410</span>。要讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code>）。</p>
+                    <span class="warn"><strong>為什麼拿掉：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。用 TOM 改 M 只動到模型那份，Desktop 那份不會跟著變；兩邊一失步，Desktop 就永久顯示「查詢中有暫止的變更尚未套用」，按「套用變更」是拿舊 M 去跑，橫幅又回來，陷入死迴圈。<br>
+                    <strong>正確做法：</strong>把完整的 <code>let...in</code> 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-expression<br>/api/delete-expression</h3>
+                    <h4>M 參數與共用函式</h4>
+                    <p>建立、更新或刪除模型層級的 Power Query 共用運算式。</p>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-calc-group</h3>
+                    <h4>計算群組</h4>
+                    <p>時間智慧的殺手鐧：一組計算項目就能讓<span class="highlight">所有量值</span>支援 YTD／MTD／YoY，不必為每個量值手寫衍生版本。</p>
+                    <span class="warn"><strong>前提：模型的 <code>DiscourageImplicitMeasures</code> 必須為 true（引擎強制）。</strong><br>
+                    開啟後使用者<u>無法再把數值欄位直接拖進視覺自動彙總</u>，一律得改用量值。這是模型層級的行為改變，務必先取得同意。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-calc-item<br>/api/delete-calc-item</h3>
+                    <h4>計算項目</h4>
+                    <p>用 <code>SELECTEDMEASURE()</code> 代表被套用的量值。可指定排序 <code>Ordinal</code> 與格式字串運算式。</p>
+                    <span class="ps">{ "TableName": "時間智慧", "ItemName": "YTD",
+  "Expression": "CALCULATE(SELECTEDMEASURE(), DATESYTD('日期'[Date]))" }</span>
+                    <span class="warn">新增項目後需要 <code>refresh</code> 該計算群組表，項目才會真的作用在量值上。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/upsert-role<br>/api/delete-role</h3>
+                    <h4>資料列層級安全性</h4>
+                    <p>建立或更新 RLS 角色與其資料表篩選規則。</p>
+                    <span class="warn"><code>TablePermissions</code> 是<strong>整組取代</strong>：送什麼就是最終狀態，未列出的舊規則會被清掉。</span>
+                </div>
+                <div class="api-card">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/set-model-props</h3>
+                    <h4>模型層級屬性</h4>
+                    <p>設定 <code>DiscourageImplicitMeasures</code> 與模型說明。</p>
+                    <span class="warn">要把 <code>DiscourageImplicitMeasures</code> 改回 false，必須先刪掉模型中所有計算群組。</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第玖部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-layer-group"></i> 第玖部：批次
+                <span class="count">效能與交易語意</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card" style="grid-column: 1 / -1">
+                    <div class="badges"><span class="method-badge method-post">POST</span></div>
+                    <h3>/api/batch</h3>
+                    <h4>一次連線、一次 SaveChanges</h4>
+                    <p>寫 20 個量值 = 20 次 HTTP + 20 次 <code>SaveChanges()</code> + 20 次模型重算。批次只重算一次。</p>
+                    <p>更關鍵的是<span class="highlight">失敗語意</span>：預設 <code>StopOnError: true</code> 且最後才存檔 —
+                       任一步失敗，<strong>整批變更全部丟棄，模型維持原狀</strong>。只有在後續操作依賴前面結果「已生效」時才需要
+                       <code>SavePerOp: true</code>（此時失敗不會回滾，回應會明確告訴你前幾個已經寫進去了）。</p>
+                    <p>單次上限 200 個操作。支援 <code>DryRun</code>。</p>
+                    <span class="ps">{ "Operations": [
+    { "Op": "upsert-measure", "Args": { "TableName": "量值", "MeasureName": "銷售總額",
+                                        "Expression": "SUM(f[Amount])", "FormatString": "#,0" } },
+    { "Op": "upsert-measure", "Args": { "TableName": "量值", "MeasureName": "訂單數",
+                                        "Expression": "COUNTROWS(f)" } }
+  ], "StopOnError": true }</span>
+                    <p style="margin-top:14px"><strong>可用的 Op：</strong>
+                       <code>upsert-measure</code>、<code>delete-measure</code>、<code>move-measure</code>、
+                       <code>add-column</code>、<code>delete-column</code>、<code>set-column-props</code>、
+                       <code>create-table</code>、<code>delete-table</code>、
+                       <code>rename</code>、<code>upsert-relationship</code>、<code>delete-relationship</code>、
+                       <code>upsert-calc-group</code>、<code>upsert-calc-item</code>、<code>delete-calc-item</code>、
+                       <code>upsert-role</code>、<code>delete-role</code>、<code>upsert-expression</code>、
+                       <code>delete-expression</code>、<code>set-model-props</code></p>
+                    <span class="warn">沒有 <code>update-m</code> —— M 腳本唯讀，用了會回 410。原因見上方 <code>/api/update-m</code> 那張卡。</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- ================= 第拾部 ================= -->
+        <div>
+            <h2 class="section-title">
+                <i class="fa-solid fa-wand-magic-sparkles"></i> 第拾部：視覺層注入
+                <span class="count">檔案驅動 &middot; 最危險的端點</span>
+            </h2>
+            <div class="api-grid">
+                <div class="api-card destructive" style="grid-column: 1 / -1">
+                    <div class="badges"><span class="method-badge method-post">POST</span><span class="method-badge tag-danger">會強制關閉 PBI</span></div>
+                    <h3>/api/inject-visual</h3>
+                    <h4>繞過介面限制，直接寫入 .pbip 底層</h4>
+                    <p>送出 Ctrl+S → <strong>Process.Kill() 強制砍掉目標那一個 Power BI Desktop</strong> → 寫入
+                       <code>visual.json</code>（可含全新分頁的 <code>page.json</code> 並更新 <code>pages.json</code>）→
+                       重新開啟<span class="highlight">同一個檔案</span>。</p>
+                    <p style="margin-top:12px">報表定義資料夾由目標實例推導：
+                       <code>X:\proj\name.pbip</code> → <code>X:\proj\name.Report\definition</code>。
+                       不再依賴設定檔，所以不會發生「關掉你正在做的檔案、打開另一個」。</p>
+                    <p style="margin-top:12px"><strong>已內建的防護：</strong></p>
+                    <ul style="font-size:14px; color:#cbd5e1; line-height:1.7; margin:8px 0 0; padding-left:22px">
+                        <li>PageId／VisualId 必須是 20 位 hex（防路徑注入）</li>
+                        <li>VisualJson 必須是合法 JSON</li>
+                        <li>寫入路徑必須落在<strong>該 PBIP 專案資料夾內</strong>（防路徑穿越）</li>
+                        <li>選用的 <code>Security:AllowedBasePaths</code> 白名單：設了就必須同時符合</li>
+                        <li><strong>目標不是 PBIP 時直接中止</strong> — 視覺注入只適用展開成資料夾的專案</li>
+                        <li><strong>只關掉目標那一個實例</strong> — 其他開著的 PBI 不受影響</li>
+                    </ul>
+                    <span class="warn">強制中止仍有未存檔資料遺失的風險。使用前務必先確認，並手動存檔備份。</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <div class="footer">
+        PBI AI Bridge &middot; .NET 8 + TOM (寫入) / ADOMD (查詢) &middot; 38 endpoints &middot; 多實例感知<br>
+        PowerShell 封裝見 <code>tools/PBI-Bridge.ps1</code>，工作規範見 <code>CLAUDE.md</code>
+    </div>
+</body>
+</html>

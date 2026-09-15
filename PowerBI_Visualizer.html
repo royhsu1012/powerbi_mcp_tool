@@ -1,0 +1,553 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Power BI 視覺化探索儀表板</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        /* CSS variables and Glassmorphism */
+        :root {
+            --bg-color: #0f172a;
+            --glass-bg: rgba(255, 255, 255, 0.05);
+            --glass-border: rgba(255, 255, 255, 0.1);
+            --primary: #38bdf8;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #818cf8;
+        }
+
+        body {
+            margin: 0; padding: 0;
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+            color: var(--text-main);
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+
+        /* Top Nav */
+        header {
+            padding: 20px 40px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--glass-border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .title-box h1 { margin: 0; font-size: 24px; font-weight: 600; background: -webkit-linear-gradient(45deg, var(--primary), var(--accent)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;}
+        .title-box p { margin: 5px 0 0; font-size: 14px; color: var(--text-muted); }
+
+        .header-actions {
+            display: flex; gap: 15px; align-items: center;
+        }
+
+        .search-box { position: relative; width: 250px; }
+        .search-box input {
+            width: 100%; padding: 12px 12px 12px 40px;
+            border-radius: 8px; border: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.2); color: white;
+            font-size: 14px; outline: none; transition: 0.3s; box-sizing: border-box;
+        }
+        .search-box input:focus { border-color: var(--primary); box-shadow: 0 0 10px rgba(56,189,248,0.2); }
+        .search-box i { position: absolute; left: 15px; top: 14px; color: var(--text-muted); }
+
+        .refresh-btn {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: #0f172a; border: none; border-radius: 8px; padding: 12px 20px;
+            font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.3s;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .refresh-btn:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(56,189,248,0.4); color: white;}
+        .refresh-btn:active { transform: translateY(0); }
+
+        /* Layout */
+        .container { display: flex; flex: 1; overflow: hidden; }
+        
+        /* Sidebar */
+        .sidebar {
+            width: 320px;
+            background: var(--glass-bg); backdrop-filter: blur(10px);
+            border-right: 1px solid var(--glass-border);
+            overflow-y: auto; padding: 20px;
+            transition: all 0.3s ease;
+        }
+        
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(0,0,0,0.1); }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.3); }
+
+        .table-item {
+            padding: 15px; margin-bottom: 10px;
+            border-radius: 8px; background: rgba(255,255,255,0.02);
+            border: 1px solid transparent; cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .table-item:hover, .table-item.active {
+            background: rgba(255,255,255,0.08); border-color: var(--glass-border);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        .table-item h3 { margin: 0; font-size: 15px; font-weight: 600;}
+        .table-item span { font-size: 12px; color: var(--text-muted); }
+
+        /* Main Content */
+        .main-content { flex: 1; padding: 40px; overflow-y: auto; position: relative;}
+
+        .details-header { margin-bottom: 20px; animation: fadeIn 0.5s ease; display: flex; justify-content: space-between; align-items: flex-end;}
+        .details-header h2 { font-size: 32px; margin: 0 0 10px; }
+
+        /* TABS UI */
+        .tabs { display: flex; gap: 10px; margin-bottom: 20px; border-bottom: 1px solid var(--glass-border); padding-bottom: 15px; animation: fadeIn 0.6s ease; }
+        .tab-btn {
+            background: transparent; border: none; color: var(--text-muted); font-size: 15px; font-weight: 600;
+            padding: 10px 20px; cursor: pointer; transition: 0.3s; border-radius: 8px;
+        }
+        .tab-btn:hover { background: rgba(255,255,255,0.05); color: white; }
+        .tab-btn.active { background: rgba(56,189,248, 0.15); color: var(--primary); }
+
+        .tab-pane { display: none; animation: fadeIn 0.4s ease; }
+        .tab-pane.active { display: block; }
+
+        /* Data Layout */
+        .grid-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .card {
+            background: var(--glass-bg); backdrop-filter: blur(16px);
+            border: 1px solid var(--glass-border); border-radius: 12px;
+            padding: 20px; box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+        }
+        .card h3 { margin-top: 0; font-size: 18px; border-bottom: 1px solid var(--glass-border); padding-bottom: 10px; color: var(--primary);}
+
+        .data-list { list-style: none; padding: 0; margin: 0; }
+        .data-list li {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            transition: 0.2s;
+        }
+        .data-list li:hover { background: rgba(255,255,255,0.05); border-radius: 6px; }
+        
+        .col-info { display: flex; flex-direction: column; }
+        .col-name { font-weight: 600; font-size: 15px; }
+        .col-type { font-size: 12px; color: var(--text-muted); margin-top: 4px; }
+        
+        .copy-btn {
+            background: rgba(56,189,248, 0.1); color: var(--primary);
+            border: 1px solid var(--primary); border-radius: 6px; padding: 6px 12px;
+            font-size: 12px; font-weight: 600; cursor: pointer; transition: 0.2s;
+        }
+        .copy-btn:hover { background: var(--primary); color: #0f172a; transform: scale(1.05); }
+
+        .measure-code {
+            background: rgba(0,0,0,0.3); border-radius: 6px; padding: 10px;
+            font-family: monospace; font-size: 13px; color: #a5b4fc;
+            margin-top: 8px; word-break: break-all;
+        }
+        
+        .hidden-badge { background: rgba(239, 68, 68, 0.2); color: #fca5a5; font-size: 10px; padding: 2px 6px; border-radius: 4px; margin-left: 6px; }
+
+        /* M Query Display Center */
+        .mquery-container {
+            background: #0f172a; border: 1px solid var(--glass-border); border-radius: 12px;
+            padding: 25px; position: relative; height: 100%; box-sizing: border-box;
+            box-shadow: inset 0 2px 20px rgba(0,0,0,0.5);
+        }
+        .mquery-container pre {
+            margin: 0; font-family: 'Consolas', monospace; color: #86efac; font-size: 14px;
+            white-space: pre-wrap; word-break: break-all; line-height: 1.5;
+        }
+        .copy-m-btn {
+            position: absolute; top: 20px; right: 20px;
+            background: var(--primary); color: #0f172a; border: none; border-radius: 6px; padding: 10px 15px;
+            font-size: 14px; font-weight: 600; cursor: pointer; transition: 0.2s; box-shadow: 0 4px 10px rgba(56,189,248,0.3);
+        }
+        .copy-m-btn:hover { transform: scale(1.05); background: white; color: #0f172a;}
+
+        /* Toast notification */
+        #toast {
+            position: fixed; bottom: 30px; right: 30px;
+            background: #10b981; color: white;
+            padding: 12px 24px; border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            transform: translateY(100px); opacity: 0;
+            transition: all 0.3s cubic-bezier(0.68, -0.55, 0.265, 1.55);
+            font-weight: 600; z-index: 1000; display: flex; align-items: center; gap: 8px;
+        }
+        #toast.show { transform: translateY(0); opacity: 1; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="title-box">
+            <h1><i class="fa-solid fa-bolt"></i> Power BI Dynamic Explorer</h1>
+            <p>全域通用互動即時掃描機 | 支援 M 碼抓取與欄位複製</p>
+        </div>
+        <div class="header-actions">
+            <!-- 同時開多個 PBI 時，要先選定操作對象 -->
+            <div class="search-box" style="gap:8px" title="選擇要檢視哪一個執行中的 Power BI">
+                <i class="fa-solid fa-window-restore"></i>
+                <select id="instancePicker" onchange="fetchSchema()"
+                        style="background:transparent; border:none; color:var(--text-main); outline:none; font-size:14px; max-width:280px;">
+                    <option value="">偵測中…</option>
+                </select>
+            </div>
+            <a href="API_Documentation.html" class="refresh-btn" style="background: rgba(255,255,255,0.1); color: white; border: 1px solid var(--glass-border); text-decoration: none;">
+                <i class="fa-solid fa-book"></i> API 說明文件
+            </a>
+            <div class="search-box">
+                <i class="fa-solid fa-magnifying-glass"></i>
+                <input type="text" id="searchInput" placeholder="搜尋表格或欄位名稱..." onkeyup="handleSearch()">
+            </div>
+            <button class="refresh-btn" onclick="fetchSchema()"><i class="fa-solid fa-arrows-rotate" id="refreshIcon"></i> 重新掃描當前 PBI</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="sidebar" id="sidebar"></div>
+        <div class="main-content" id="mainContent"></div>
+    </div>
+
+    <div id="toast"><i class="fa-solid fa-check-circle"></i> <span id="toastMsg">已複製到剪貼簿！</span></div>
+
+    <script>
+        let pbiSchema = { Tables: [] };
+
+        // 載入時自動連線
+        document.addEventListener('DOMContentLoaded', async () => {
+            await refreshInstances();
+            fetchSchema();
+        });
+
+        // 取得 API Key（第一次會問，之後存在 localStorage）
+        // 有些內嵌瀏覽器不支援 prompt()，所以要能退回頁內輸入，不能讓整頁連環報錯
+        function getApiKey() {
+            let k = localStorage.getItem('PBI_API_KEY');
+            if (k) return k;
+            try {
+                k = prompt("請貼上 appsettings.json 中 Security.ApiKey 的值（只需輸入一次，瀏覽器會自動記住）：");
+                if (k) { localStorage.setItem('PBI_API_KEY', k.trim()); return k.trim(); }
+            } catch (e) {
+                showKeyPrompt();
+            }
+            return "";
+        }
+
+        // prompt() 不可用時的替代：直接在頁面上放一個輸入框
+        function showKeyPrompt() {
+            if (document.getElementById('inlineKeyBox')) return;
+            const box = document.createElement('div');
+            box.id = 'inlineKeyBox';
+            box.style.cssText = 'position:fixed; inset:0; display:flex; align-items:center; justify-content:center;'
+                              + 'background:rgba(0,0,0,0.7); z-index:999;';
+            box.innerHTML = `
+                <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:12px; padding:28px; max-width:460px;">
+                    <h3 style="margin:0 0 10px; color:#f8fafc;">需要 API Key</h3>
+                    <p style="margin:0 0 16px; color:#94a3b8; font-size:14px; line-height:1.6;">
+                        請貼上 <code>pbibridge_csharp/appsettings.json</code> 中 <code>Security.ApiKey</code> 的值。
+                        只需輸入一次，瀏覽器會記住。
+                    </p>
+                    <input id="inlineKeyInput" type="password" placeholder="API Key"
+                           style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2);
+                                  background:rgba(0,0,0,0.3); color:#f8fafc; font-family:monospace;">
+                    <button onclick="saveInlineKey()"
+                            style="margin-top:14px; width:100%; padding:10px; border:none; border-radius:8px;
+                                   background:#38bdf8; color:#0f172a; font-weight:700; cursor:pointer;">儲存並重新載入</button>
+                </div>`;
+            document.body.appendChild(box);
+        }
+
+        function saveInlineKey() {
+            const v = document.getElementById('inlineKeyInput').value.trim();
+            if (!v) return;
+            localStorage.setItem('PBI_API_KEY', v);
+            document.getElementById('inlineKeyBox').remove();
+            refreshInstances().then(fetchSchema);
+        }
+
+        // 送出請求時一律帶上目前選定的實例；沒選就交給伺服器判斷
+        function apiHeaders() {
+            const h = { 'X-API-Key': getApiKey() };
+            const t = document.getElementById('instancePicker')?.value;
+            if (t) h['X-PBI-Target'] = t;
+            return h;
+        }
+
+        // 列舉執行中的 Power BI，填入下拉選單
+        async function refreshInstances() {
+            const picker = document.getElementById('instancePicker');
+            try {
+                const res = await fetch('http://localhost:5500/api/instances', { headers: { 'X-API-Key': getApiKey() } });
+                if (res.status === 401) { localStorage.removeItem('PBI_API_KEY'); throw new Error('API Key 認證失敗'); }
+                if (!res.ok) throw new Error(await res.text());
+                const data = await res.json();
+                const list = data.instances || data.Instances || [];
+
+                const previous = picker.value;
+                picker.innerHTML = '';
+                if (list.length === 0) {
+                    picker.innerHTML = '<option value="">（沒有執行中的 Power BI）</option>';
+                    return;
+                }
+                list.forEach(i => {
+                    const o = document.createElement('option');
+                    o.value = i.port;
+                    o.textContent = `${i.fileName || '(未開啟檔案)'} · ${i.kind} · :${i.port}`;
+                    picker.appendChild(o);
+                });
+                // 盡量保留原本的選擇，避免重新整理後跳回第一個
+                if (previous && list.some(i => String(i.port) === previous)) picker.value = previous;
+            } catch (e) {
+                picker.innerHTML = `<option value="">（無法取得清單）</option>`;
+                console.error(e);
+            }
+        }
+
+        async function fetchSchema() {
+            const main = document.getElementById('mainContent');
+            const icon = document.getElementById('refreshIcon');
+            const sidebar = document.getElementById('sidebar');
+            
+            icon.classList.add('fa-spin');
+            sidebar.innerHTML = '';
+            
+            main.innerHTML = `
+                <div style="text-align: center; margin-top: 100px; color: var(--text-muted);">
+                    <i class="fa-solid fa-circle-notch fa-spin" style="font-size: 48px; margin-bottom: 20px; color: var(--primary);"></i>
+                    <h2>正在深度掃描 Power BI 背景資料庫...</h2>
+                    <p>正在尋找目前在您電腦上開啟的 PBI 檔案，請稍候約 1 秒鐘！</p>
+                </div>
+            `;
+            
+            try {
+                // 每次掃描前先更新實例清單 —— 使用者可能剛開了新檔案，或關掉了舊的
+                await refreshInstances();
+
+                // 向本機 C# 伺服器要資料，帶上金鑰與選定的實例
+                const response = await fetch('http://localhost:5500/api/schema', {
+                    headers: apiHeaders()
+                });
+
+                if (response.status === 401) {
+                    localStorage.removeItem('PBI_API_KEY'); // 密碼錯誤就刪除，下回重問
+                    throw new Error("API Key 認證失敗！請重新整理網頁，並確實貼上黑窗中的金鑰。");
+                }
+                if (!response.ok) {
+                    const err = await response.text();
+                    throw new Error(err || "伺服器無回應");
+                }
+                const data = await response.json();
+                
+                // 相容大小寫
+                pbiSchema.Tables = data.tables || data.Tables || [];
+                const exportTime = data.exportTime || data.ExportTime;
+                
+                // 渲染左側選單
+                renderSidebar(pbiSchema.Tables);
+                
+                // 如果有資料，預設打開第一個表
+                if (pbiSchema.Tables.length > 0) {
+                     renderTableDetails(pbiSchema.Tables[0], exportTime);
+                     document.querySelectorAll('.table-item')[0].classList.add('active');
+                } else {
+                     main.innerHTML = `<div style="text-align:center; margin-top:100px;"><h2>這份模型中沒有任何實體資料表。</h2></div>`;
+                }
+
+            } catch (error) {
+                console.error(error);
+                main.innerHTML = `
+                <div style="text-align: center; margin-top: 100px; color: #ef4444;">
+                    <i class="fa-solid fa-plug-circle-xmark" style="font-size: 48px; margin-bottom: 20px;"></i>
+                    <h2>連線失敗！</h2>
+                    <p style="color: var(--text-main);">小精靈無法與您的背景伺服器取得聯繫。</p>
+                    <p style="color: var(--text-muted); font-size:14px; text-align:left; max-width: 400px; margin: 20px auto;">
+                        👉 檢查 1：您是否有先開啟任何一份 Power BI 檔案？（必須要有檔案 PBI 引擎才會啟動）<br><br>
+                        👉 檢查 2：您的桌面是否已經執行過「🚀啟動PBI終極儀表板的捷徑」使伺服器常駐？
+                    </p>
+                    <p style="font-size:12px; color:rgba(239, 68, 68, 0.6);">${error.message}</p>
+                </div>
+                `;
+            } finally {
+                icon.classList.remove('fa-spin');
+            }
+        }
+
+        function renderSidebar(tables) {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.innerHTML = '';
+            tables.forEach(t => {
+                const div = document.createElement('div');
+                div.className = 'table-item';
+                div.innerHTML = `
+                    <h3><i class="fa-solid fa-table"></i> ${t.name || t.Name} ${(t.isHidden || t.IsHidden) ? '<span class="hidden-badge">隱藏表</span>' : ''}</h3>
+                    <span>${(t.columns || t.Columns).length} 欄位 | ${(t.measures || t.Measures).length} 量值</span>
+                `;
+                div.onclick = () => {
+                    document.querySelectorAll('.table-item').forEach(el => el.classList.remove('active'));
+                    div.classList.add('active');
+                    renderTableDetails(t, document.getElementById('syncTimeBadgeHidden')?.innerText);
+                };
+                sidebar.appendChild(div);
+            });
+        }
+
+        function renderTableDetails(t, exportTime) {
+            const main = document.getElementById('mainContent');
+            const tableName = t.name || t.Name;
+            const columns = t.columns || t.Columns;
+            const measures = t.measures || t.Measures;
+            const mQuery = t.mQuery || t.MQuery;
+            
+            let colsHtml = '';
+            columns.forEach(c => {
+                const colName = c.name || c.Name;
+                const colType = c.dataType || c.DataType;
+                const isHidden = c.isHidden || c.IsHidden;
+                colsHtml += `
+                    <li>
+                        <div class="col-info">
+                            <span class="col-name">${colName} ${isHidden ? '<span class="hidden-badge">隱藏</span>' : ''}</span>
+                            <span class="col-type">${colType}</span>
+                        </div>
+                        <button class="copy-btn" onclick="copyText('${tableName}[${colName}]')"><i class="fa-solid fa-copy"></i> 複製</button>
+                    </li>
+                `;
+            });
+
+            let measuresHtml = '';
+            measures.forEach(m => {
+                const measName = m.name || m.Name;
+                const measExpr = m.expression || m.Expression;
+                measuresHtml += `
+                    <li style="display:block;">
+                        <div style="display:flex; justify-content: space-between; align-items:center;">
+                            <span class="col-name"><i class="fa-solid fa-calculator" style="color: var(--accent);"></i> ${measName}</span>
+                            <button class="copy-btn" onclick="copyText('[${measName}]')"><i class="fa-solid fa-copy"></i> 複製</button>
+                        </div>
+                        <div class="measure-code">${measExpr}</div>
+                    </li>
+                `;
+            });
+
+            main.innerHTML = `
+                <div class="details-header">
+                    <div>
+                        <h2>${tableName}</h2>
+                        <p style="color: var(--text-muted);">總掃描數：${columns.length} 實體欄位，${measures.length} 計算量值。</p>
+                    </div>
+                    ${exportTime ? `<div style="color: #10b981; font-size: 14px;"><i class="fa-solid fa-circle-check"></i> 同步於: ${exportTime}</div>` : ''}
+                    <span id="syncTimeBadgeHidden" style="display:none;">${exportTime}</span>
+                </div>
+                
+                <!-- 雙切換按鈕區 -->
+                <div class="tabs">
+                    <button class="tab-btn active" onclick="switchTab('schemaTab', this)"><i class="fa-solid fa-sitemap"></i> 資料結構 (Columns/Measures)</button>
+                    <button class="tab-btn" onclick="switchTab('mqueryTab', this)"><i class="fa-solid fa-code"></i> 清理腳本 (Power Query M)</button>
+                </div>
+
+                <!-- 內容 1：資料結構表 (預設開啟) -->
+                <div id="schemaTab" class="tab-pane active">
+                    <div class="grid-layout">
+                        <div class="card">
+                            <h3><i class="fa-solid fa-columns"></i> 實體欄位</h3>
+                            <ul class="data-list">
+                                ${colsHtml || '<li style="color:#64748b; text-align:center;">無實體欄位</li>'}
+                            </ul>
+                        </div>
+                        <div class="card">
+                            <h3><i class="fa-solid fa-square-root-variable"></i> 計算量值</h3>
+                            <ul class="data-list">
+                                ${measuresHtml || '<li style="color:#64748b; text-align:center;">目前這張表中尚未擁任何量值。</li>'}
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 內容 2：M 語言大黑板 -->
+                <div id="mqueryTab" class="tab-pane">
+                    ${mQuery 
+                        ? `<div class="mquery-container">
+                               <button class="copy-m-btn" onclick="copyMQuery(this)"><i class="fa-solid fa-copy"></i> 完整複製 M 程式碼</button>
+                               <pre id="mCodeBlock">${mQuery.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</pre>
+                           </div>`
+                        : `<div style="text-align:center; margin-top:50px; color:var(--text-muted);"><i class="fa-solid fa-ghost" style="font-size:32px; margin-bottom:10px;"></i><p>這張資料表裡面沒有任何 M 語言腳本！<br>(可能這是一張 DAX 公式計算表，或是尚未撰寫任何清理步驟)</p></div>`
+                    }
+                </div>
+            `;
+        }
+
+        function switchTab(tabId, btnElem) {
+            document.querySelectorAll('.tab-pane').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            btnElem.classList.add('active');
+        }
+
+        function copyMQuery(btn) {
+            const code = document.getElementById('mCodeBlock').innerText;
+            navigator.clipboard.writeText(code).then(() => {
+                const prevHtml = btn.innerHTML;
+                const prevBg = btn.style.background;
+                const prevColor = btn.style.color;
+                
+                btn.innerHTML = '<i class="fa-solid fa-check"></i> 複製成功！';
+                btn.style.background = '#10b981';
+                btn.style.color = '#fff';
+                
+                setTimeout(() => {
+                    btn.innerHTML = prevHtml;
+                    btn.style.background = prevBg;
+                    btn.style.color = prevColor;
+                }, 2000);
+                
+                // 也彈出下方 Toast
+                const toast = document.getElementById('toast');
+                document.getElementById('toastMsg').innerText = '已完美複製整段 M 語言腳本！';
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            });
+        }
+
+        function copyText(text) {
+            const formatText = text.includes(' ') && text.includes('[') ? "'" + text.split('[')[0] + "'[" + text.split('[')[1] : text;
+            navigator.clipboard.writeText(formatText).then(() => {
+                const toast = document.getElementById('toast');
+                document.getElementById('toastMsg').innerText = '已完美複製：' + formatText;
+                toast.classList.add('show');
+                setTimeout(() => toast.classList.remove('show'), 2000);
+            });
+        }
+
+        function handleSearch() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            const filtered = pbiSchema.Tables.filter(t => {
+                const tName = t.name || t.Name;
+                const cols = t.columns || t.Columns;
+                const meas = t.measures || t.Measures;
+                return tName.toLowerCase().includes(query) || 
+                       cols.some(c => (c.name || c.Name).toLowerCase().includes(query)) ||
+                       meas.some(m => (m.name || m.Name).toLowerCase().includes(query));
+            });
+            renderSidebar(filtered);
+            
+            if(filtered.length === 1 && query.length >= 2) {
+                 renderTableDetails(filtered[0], document.getElementById('syncTimeBadgeHidden')?.innerText);
+                 const elems = document.getElementsByClassName('table-item');
+                 if(elems.length > 0) elems[0].classList.add('active');
+            }
+        }
+    </script>
+</body>
+</html>

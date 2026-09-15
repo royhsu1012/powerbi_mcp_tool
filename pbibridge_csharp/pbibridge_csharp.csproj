@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <!-- CA1416「只有 Windows 支援」：這是 Windows 專屬工具（依賴 msmdsrv 行程與 Win32 API），
+         這個警告永遠成立也永遠無害。留著只會在安裝時刷出一整面紅字嚇到人。 -->
+    <NoWarn>$(NoWarn);CA1416</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64" Version="19.82.0" />
+    <PackageReference Include="Microsoft.AnalysisServices.NetCore.retail.amd64" Version="19.82.0" />
+    <PackageReference Include="System.Management" Version="8.0.0" />
+  </ItemGroup>
+  
+  <ItemGroup>
+    <None Update="appsettings.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="appsettings.template.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+</Project>
