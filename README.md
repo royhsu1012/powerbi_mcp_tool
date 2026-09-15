@@ -6,11 +6,12 @@
 - 透過 ADOMD 執行 DAX 查詢**當場驗算** —— 寫完立刻查，不必存檔、不必重開
 - 可同時開多個 PBIX / PBIP，隨時切換操作對象
 - 伺服器端強制**資料保護**：AI 讀得到結構，拿不到客戶名稱與逐筆金額
+- **只有一個啟動檔**：缺什麼會先問你、按 Y 直接裝好；儀表板自動打開，不用貼金鑰
 
 ```
-AI 代理（PowerShell）            瀏覽器（儀表板）
+AI 代理（PowerShell）            瀏覽器（儀表板 http://localhost:5500/）
           ↕                            ↕
-   HTTP + X-API-Key + X-PBI-Target   （只綁 localhost:5500）
+   HTTP + X-API-Key + X-PBI-Target   （只接受 localhost）
           ↕
    pbibridge_csharp/   C# 本地服務
           ↕  TOM（寫入）／ADOMD（查詢）
@@ -23,7 +24,7 @@ Power BI Desktop #1   Power BI Desktop #2   …
 
 | 你是… | 看這份 |
 |---|---|
-| **第一次拿到、要安裝使用的人** | **[使用說明.md](使用說明.md)** —— 從安裝到日常操作的逐步教學 |
+| **第一次拿到、要安裝使用的人** | **[使用說明.md](使用說明.md)** —— 從第一次啟動到日常操作的逐步教學 |
 | 想快速了解全貌的人 | 本文件 |
 | AI 代理（Claude Code 自動載入） | [CLAUDE.md](CLAUDE.md) —— 完整工作規範 |
 | 其他 AI 代理（Codex / Cursor / Antigravity…） | [AGENTS.md](AGENTS.md)，再讀 CLAUDE.md |
@@ -34,47 +35,66 @@ Power BI Desktop #1   Power BI Desktop #2   …
 ## 🚀 快速開始
 
 1. **解壓縮到本機資料夾**，例如 `C:\PBI_AI_Bridge`（不要放 OneDrive，不要在 zip 裡直接執行）
-2. 雙擊 **`📦第一次使用請先點我.bat`**（只需一次）
-3. **編輯 `pbibridge_csharp\appsettings.json` 的資料保護清單**，補上你模型裡的敏感欄位（見下方）
-4. 開啟一份 Power BI 檔案 → 雙擊 **`🚀啟動PBI終極儀表板.bat`** → **保持黑窗開著**
+2. 開啟一份 Power BI 檔案（.pbix 或 .pbip）
+3. 雙擊 **`🚀啟動PBI終極儀表板.bat`**，照畫面回答 Y / N
+4. 儀表板自動打開後，**保持黑窗開著**（關掉＝停止服務）
 5. 在這個資料夾開啟 Claude Code，用中文告訴它你要做什麼
 
-每一步的畫面與錯誤處理見 [使用說明.md](使用說明.md)。
+第一次視需要安裝的東西而定，約 2～5 分鐘；之後每次幾秒鐘。每一步的畫面見 [使用說明.md](使用說明.md)。
 
 ## 系統需求
 
 | 項目 | 說明 |
 |---|---|
 | Windows 10 / 11 | 僅支援 Windows |
-| **.NET 8 SDK** | ⚠️ 必須是 **SDK**，只有 Runtime 無法編譯。<https://dotnet.microsoft.com/download/dotnet/8.0> →「.NET SDK 8.x.x」Windows x64 |
 | Power BI Desktop | 要**開著至少一份檔案**才有東西可以連 |
+| .NET SDK 8 以上 | **沒有也沒關係**：啟動檔會問你要不要用 Windows 內建的 `winget` 直接安裝（約 250 MB，可能要系統管理員權限）。只裝 Runtime 不夠，必須是 SDK |
+| 網路（僅第一次） | 從 **nuget.org**（`api.nuget.org`）下載 6 個相依套件，共約 17 MB，之後離線可用。公司 Proxy／防火牆擋 nuget.org 時請找 IT |
 | Windows PowerShell 5.1 | 系統內建 |
-| **網路（僅第一次編譯）** | 第一次編譯會從 **nuget.org** 下載 Analysis Services 元件，之後離線可用。公司 Proxy／防火牆擋 nuget.org 時請找 IT |
 | AI 代理（選用） | Claude Code（建議），或其他能執行 PowerShell 的代理 |
+
+<details>
+<summary>第一次啟動會下載的套件（需要請 IT 放行時用）</summary>
+
+| 套件 | 版本 | 大小 |
+|---|---|---|
+| Microsoft.AnalysisServices.NetCore.retail.amd64 | 19.82.0 | 6.2 MB |
+| Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64 | 19.82.0 | 1.9 MB |
+| System.Management | 8.0.0 | 0.8 MB |
+| Microsoft.Identity.Client | 4.56.0 | 7.7 MB |
+| System.CodeDom | 8.0.0 | 0.5 MB |
+| Microsoft.IdentityModel.Abstractions | 6.22.0 | 0.1 MB |
+
+前三個是專案直接引用，後三個是自動帶入的相依套件。來源：`https://api.nuget.org/v3/index.json`。
+套件會存進使用者的 NuGet 快取（`%USERPROFILE%\.nuget\packages`），同一台機器之後不再下載。
+只裝了 .NET 9 / 10 SDK 的電腦，還會多下載 .NET 8 的參考套件。
+
+</details>
 
 ---
 
-## 安裝檔做了什麼
+## 啟動檔做了什麼
 
-`📦第一次使用請先點我.bat` 只需要跑一次：
+只有一個啟動檔：`🚀啟動PBI終極儀表板.bat`。每次雙擊都依序檢查，**只做缺少的部分**：
 
-| 步驟 | 內容 |
-|---|---|
-| 1/5 | 確認收到的檔案完整 |
-| 2/5 | 檢查 .NET SDK（分辨得出「只裝了 Runtime」，並幫你開下載頁） |
-| 3/5 | 檢查資料夾位置（在 OneDrive 裡會警告） |
-| 4/5 | 由範本產生 `appsettings.json`，**填入一把只屬於這台機器的隨機 API Key** |
-| 5/5 | 編譯 Release 版（第一次約 1 分鐘，含下載 NuGet 套件） |
+| 檢查 | 第一次 | 之後 |
+|---|---|---|
+| 服務已經在跑？ | — | 是的話直接打開儀表板，不會重複啟動 |
+| 1/5 檔案 | 確認資料夾完整；在 OneDrive 裡會警告 | 略過 |
+| 2/5 .NET SDK | 沒有的話**問你要不要安裝**，按 Y 用 `winget` 直接裝；沒有 winget 時給連結與步驟，裝好按 R 重新檢查 | 略過 |
+| 3/5 設定檔 | 產生 `appsettings.json` 與**只屬於這台機器的隨機 API Key**，並提醒設定資料保護清單（可直接開記事本） | 略過 |
+| 4/5 套件 | **問你要不要下載**（約 17 MB）。失敗時自動判斷：沒註冊 nuget.org 就問要不要幫你加；網路問題就給檢查步驟，按 R 重試 | 略過 |
+| 5/5 編譯 | 編譯（約 30 秒） | 程式有改才重新編譯 |
+| 啟動 | 服務起來後**自動打開儀表板** | 同左 |
 
-跑完會印出 API Key。網頁儀表板第一次會問；AI 使用的 `tools/PBI-Bridge.ps1` 會自己讀，不必手動輸入。
-安裝檔不會碰你的 Power BI 檔案。
+全程不會碰你的 Power BI 檔案。金鑰由儀表板與 AI 工具自動讀取，**不需要手動輸入**。
 
 > **每台機器各自產生 Key，不要共用，也不要把 `appsettings.json` 傳給別人。**
 
-## ⚙️ 安裝後第一件事：調整資料保護清單
+## ⚙️ 第一次啟動時：設定資料保護清單
 
 `pbibridge_csharp/appsettings.json` → `DataProtection` 預設只有英文通用樣式（`*customer*`、`*amount*`…）。
-**模型若用中文欄位名，預設清單幾乎擋不到東西**，請補上你自己的敏感欄位。
+**模型若用中文欄位名，預設清單幾乎擋不到東西**，請補上你自己的敏感欄位。第一次啟動時，啟動檔會提醒並幫你用記事本打開。
 
 | 清單 | 放什麼 | 效果 |
 |---|---|---|
@@ -83,7 +103,7 @@ Power BI Desktop #1   Power BI Desktop #2   …
 | `AllowColumns` | 被樣式誤傷、其實不敏感的欄位 | 優先放行 |
 
 比對時忽略大小寫、空白、底線、連字號，可用 `*` 樣式（例如 `*客戶*`）。
-改完**關掉黑窗、重新雙擊 🚀** 就生效 —— 啟動器每次都會重新編譯並把設定複製到 `bin\`。
+之後再改：**關掉黑窗、重新雙擊 🚀** 就生效（啟動檔每次都會把設定複製到服務讀取的 `bin\`）。
 
 範例與驗證方法見 [使用說明.md 第 4 節](使用說明.md#4-設定資料保護清單重要)。
 
@@ -93,8 +113,8 @@ Power BI Desktop #1   Power BI Desktop #2   …
 
 ### A. 網頁儀表板（唯讀瀏覽）
 
-啟動器會自動開啟 `PowerBI_Visualizer.html`：瀏覽資料表、欄位、DAX 量值、M 腳本。
-右上角可切換要看哪一個 Power BI。第一次使用要輸入 API Key，瀏覽器會記住。
+服務啟動後會自動打開 <http://localhost:5500/>：瀏覽資料表、欄位、DAX 量值、M 腳本，右上角可切換要看哪一個 Power BI。
+頁面由服務提供並自動帶入金鑰，**不需要輸入任何東西**。直接雙擊 `PowerBI_Visualizer.html` 也會自動轉到這個網址。
 
 ### B. AI 代理（開發）
 
@@ -172,6 +192,11 @@ New-PbiSnapshot → Get-PbiSchema → 寫入 → Invoke-PbiRefresh（結構性�
 - 每次查詢記錄到 `audit/`（只記查詢文字與判定，不記回傳值）
 - Claude Code 另有 `.claude/hooks/guard-data-access.ps1`，擋掉「直接連 msmdsrv 繞過服務」的寫法（第二道防線；主防線是伺服器）
 
+服務本身的連線保護：
+
+- 所有 `/api/*` 都要帶金鑰。儀表板頁面由服務提供並帶入金鑰，所以使用者不必輸入
+- 只接受以 `localhost` / `127.0.0.1` 連線（擋 DNS rebinding），也不允許 `null` 來源（擋沙箱 iframe）—— 其他網站拿不到金鑰，也呼叫不了 API
+
 ⚠️ 仍然擋不住的：
 
 - 篩選條件夠窄時，彙總本身就是明細（例如某一家客戶的營收總額）
@@ -179,7 +204,7 @@ New-PbiSnapshot → Get-PbiSchema → 寫入 → Invoke-PbiRefresh（結構性�
 - 錯誤訊息可能夾帶真實資料值 —— 貼錯誤給 AI 前先看一眼
 - **清單沒涵蓋到的欄位** —— 所以請務必依自己的模型調整清單
 
-驗證防護是否生效：`.\tools\Test-DataGuard.ps1`（用你模型裡的實際欄位模擬各種繞過手法，只回報擋下與否，不印任何資料）。
+驗證防護是否生效：`.\tools\Test-DataGuard.ps1`（用你模型裡的實際欄位模擬各種繞過手法，只回報擋下與否，不印任何資料）。同時開多個 Power BI 時加 `-Target <Port>`。
 
 ---
 
@@ -204,9 +229,8 @@ PBI_AI_Bridge/
 ├── 使用說明.md                    逐步使用教學
 ├── CLAUDE.md                      AI 工作規範（Claude Code 自動載入）
 ├── AGENTS.md                      其他 AI 代理的入口
-├── 📦第一次使用請先點我.bat         安裝（只跑一次）
-├── 🚀啟動PBI終極儀表板.bat          每次使用的啟動器
-├── PowerBI_Visualizer.html        網頁儀表板
+├── 🚀啟動PBI終極儀表板.bat          唯一的啟動檔（自動偵測：安裝／編譯／啟動）
+├── PowerBI_Visualizer.html        網頁儀表板（由服務在 localhost:5500 提供）
 ├── API_Documentation.html         API 端點總覽
 ├── tools/
 │   ├── PBI-Bridge.ps1             PowerShell 輔助函式
@@ -215,7 +239,7 @@ PBI_AI_Bridge/
 │   ├── Program.cs                 所有 API 端點與 DataGuard
 │   ├── pbibridge_csharp.csproj
 │   ├── appsettings.template.json  設定範本（可分享）
-│   └── appsettings.json           安裝時產生，含你的 API Key（勿分享）
+│   └── appsettings.json           第一次啟動時產生，含你的 API Key（勿分享）
 ├── .claude/
 │   ├── settings.json              Claude Code hook 設定
 │   └── hooks/guard-data-access.ps1
@@ -226,7 +250,9 @@ PBI_AI_Bridge/
 
 ## 📤 分享給別人時
 
-直接複製資料夾或壓 zip 前，**先刪掉以下項目**（`.gitignore` 已排除，但複製檔案不會）：
+**最簡單**：請對方從 GitHub 下載（Code → Download ZIP），裡面不會有任何你的個人檔案。
+
+直接複製你自己的資料夾或壓 zip 的話，**先刪掉以下項目**（`.gitignore` 已排除，但複製檔案不會）：
 
 | 刪掉 | 原因 |
 |---|---|
@@ -238,7 +264,10 @@ PBI_AI_Bridge/
 
 想分享你調好的保護清單？把清單內容手動合進 `appsettings.template.json`（**不要**連 Key 一起帶過去）。
 
-⚠️ 用文字編輯器修改 `tools/*.ps1` 後，**存檔時要保留「UTF-8 with BOM」**，否則同事的 PowerShell 5.1 會把中文讀成亂碼而無法載入。
+⚠️ 修改檔案時的兩個編碼陷阱：
+
+- `tools/*.ps1` 存檔要保留「**UTF-8 with BOM**」，否則 PowerShell 5.1 會把中文讀成亂碼而無法載入
+- `🚀啟動PBI終極儀表板.bat` 只能有**英文字元**、行尾必須是 **CRLF**，否則 cmd 會讀錯位置、跳到錯的標籤
 
 ---
 
@@ -246,17 +275,17 @@ PBI_AI_Bridge/
 
 | 症狀 | 處理 |
 |---|---|
-| 安裝檔說找不到 SDK | 裝的是 Runtime，請下載「.NET SDK 8.x.x」 |
-| 編譯失敗，訊息有 `NU1301` / 無法載入服務索引 | 連不到 nuget.org。確認網路或公司 Proxy 後重跑安裝檔 |
-| 編譯失敗 `MSB3027` 檔案鎖定 | 服務還開著。關掉黑窗再重跑 |
-| `Port 5500 is already in use` | 已有一個服務在跑（忘了關的舊黑窗；VS Code 的 Live Server 預設也用 5500）。關掉它再重開 |
 | 雙擊 .bat 跳「Windows 已保護您的電腦」 | 從網路下載的檔案。按「其他資訊 → 仍要執行」，或解壓縮前在 zip 按右鍵 → 內容 → 解除封鎖 |
+| 啟動檔說找不到 .NET SDK | 按 Y 讓它用 winget 安裝。公司電腦沒有 winget 或被擋時，按 O 開下載頁手動安裝「.NET SDK 8.x.x」，裝好回到黑窗按 R |
+| 啟動檔 4/5 下載失敗 | 照畫面處理：沒註冊 nuget.org 會問你要不要自動加上；網路問題請確認瀏覽器打得開 `https://api.nuget.org/v3/index.json`、公司 Proxy，再按 R 重試。詳見 [使用說明.md](使用說明.md#套件下載失敗) |
+| 編譯失敗 `MSB3027` 或 `CS2012`，訊息有 `being used by another process` | 同時有兩個啟動檔在編譯。關掉多的黑窗再雙擊一次 |
+| `Port 5500 is used by a different program` | 別的程式占用 5500（例如 VS Code Live Server）。關掉它再雙擊 🚀。本服務已經在跑的話不會出現這個，而是直接打開儀表板 |
 | PowerShell 說「已停用指令碼執行」或「未經數位簽署」 | 見 [使用說明.md 第 11 節](使用說明.md#powershell-無法執行腳本) |
 | 載入 `PBI-Bridge.ps1` 出現一堆 `Unexpected token` | 檔案被存成沒有 BOM 的 UTF-8，請改存為 UTF-8 with BOM |
 | `找不到正在執行的 Power BI 檔案` | 先開啟 PBIX / PBIP |
-| `目前有 N 個 Power BI 實例在執行` | `Use-PbiInstance <檔名片段或 Port>` 選定目標 |
-| 401 Unauthorized | Key 不對。網頁端重新輸入 `appsettings.json` 裡的 `Security.ApiKey` |
-| 改了 `appsettings.json` 沒生效 | 關掉黑窗、重新雙擊 🚀（服務讀的是 `bin\` 下的副本） |
+| `目前有 N 個 Power BI 實例在執行` | `Use-PbiInstance <檔名片段或 Port>` 選定目標。同一份檔案開了兩次也會這樣 |
+| 儀表板顯示「金鑰不符」 | 服務重新啟動過，按 F5 重新整理頁面 |
+| 改了 `appsettings.json` 沒生效 | 關掉黑窗、重新雙擊 🚀 |
 | `Save-PbiModel` 回 `fileChanged = false` | 大檔可能還在寫，稍等再看；確定沒存到就手動 Ctrl+S，**不要連按** |
 | Power BI 一直顯示「查詢中有暫止的變更尚未套用」 | M 被 API 改過而失步。到進階編輯器貼上正確 M 並「關閉並套用」 |
 | 防毒跳警報 | 停止操作、截圖、記下時間，對照 AI 剛做了什麼。詳見 CLAUDE.md「防毒軟體相容規範」 |

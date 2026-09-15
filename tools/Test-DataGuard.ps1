@@ -16,7 +16,12 @@
 #   ❌ 失敗 = 有洞，或誤擋了合法查詢
 # =============================================================================
 
-param([switch]$IncludeWriteTests)
+param(
+    [switch]$IncludeWriteTests,
+    # 同時開多個 Power BI 時必填（Port 或檔名片段）。本腳本在自己的作用域載入橋接函式，
+    # 呼叫端先前做過的 Use-PbiInstance 不會帶進來。
+    [string]$Target
+)
 
 # ⚠️ 一定要在「本腳本自己的作用域」裡載入橋接函式，不能依賴呼叫端先 dot-source。
 #    PowerShell 對非模組函式的 $script: 是動態解析到「當前執行中的腳本」，
@@ -24,6 +29,10 @@ param([switch]$IncludeWriteTests)
 #    在這裡全會是 $null，症狀是 "Invalid URI: The hostname could not be parsed."
 #    （長期解法是把 PBI-Bridge.ps1 改成 .psm1，模組作用域才是靜態的。）
 . (Join-Path $PSScriptRoot "PBI-Bridge.ps1") | Out-Null
+if ($Target) {
+    Use-PbiInstance $Target
+    if (-not $script:PbiTarget) { throw "找不到符合「$Target」的 Power BI 實例，請用 Get-PbiInstances 確認 Port" }
+}
 
 $root = Split-Path -Parent $PSScriptRoot
 $cfg  = Get-Content (Join-Path $root "pbibridge_csharp\appsettings.json") -Raw -Encoding UTF8 | ConvertFrom-Json

@@ -346,6 +346,7 @@ Headers: `X-API-Key: <key>`　＋　`X-PBI-Target: <Port 或檔名片段>`（多
 | 端點 | 方法 | 用途 |
 |---|---|---|
 | `/ping` | GET | 健康檢查（免 Key） |
+| `/` | GET | 網頁儀表板（給人用，免 Key —— 伺服器把金鑰帶進頁面）。所有請求只接受 Host 為 localhost / 127.0.0.1 |
 | `/api/schema` | GET | 全部資料表、欄位、DAX 量值原始碼、Power Query M 腳本 |
 | `/api/relationships` | GET | 關聯線：基數、雙向篩選、是否啟用 |
 | `/api/roles` | GET | RLS 角色與資料表篩選規則 |
@@ -640,16 +641,16 @@ PBI_AI_Bridge/
 ├── AGENTS.md                      ← 其他 AI 代理（Codex / Cursor …）的入口，指向本文件
 ├── README.md                      ← 給人看的總覽
 ├── 使用說明.md                    ← 給同事的逐步使用教學
-├── 📦第一次使用請先點我.bat         ← 安裝檔（只跑一次：檢查 SDK → 產生 API Key → 建置）
-├── 🚀啟動PBI終極儀表板.bat          ← 唯一啟動器（雙擊執行：檢查設定與 Port → 建置 → 開網頁 → 起服務）
-├── PowerBI_Visualizer.html        ← 人類用的網頁介面（含實例選擇器，唯讀瀏覽）
+├── 🚀啟動PBI終極儀表板.bat          ← 唯一的啟動檔（自動偵測階段：已在跑就開儀表板 → 缺 SDK／套件時詢問並安裝 → 程式有改才編譯 → 起服務）
+│                                     ⚠️ 只能有 ASCII 字元、行尾必須 CRLF（cmd 以位元組定位，否則 goto 會錯位）
+├── PowerBI_Visualizer.html        ← 網頁儀表板。由服務在 http://localhost:5500/ 提供並帶入金鑰（直接雙擊會自動轉址）
 ├── API_Documentation.html         ← 端點總覽（網頁版）
 ├── tools/
 │   ├── PBI-Bridge.ps1             ← PowerShell 輔助函式（一律用這個呼叫 API）⚠️ 必須保留 UTF-8 BOM
 │   └── Test-DataGuard.ps1         ← 資料保護紅隊測試（只回報擋下與否，不印出資料）
 ├── pbibridge_csharp/              ← C# 橋接服務
 │   ├── Program.cs                 ← 所有 API 端點與 DataGuard 都在這
-│   ├── appsettings.template.json  ← 設定範本（可分享；安裝檔由它產生 appsettings.json）
+│   ├── appsettings.template.json  ← 設定範本（可分享；啟動檔第一次執行時由它產生 appsettings.json）
 │   └── appsettings.json           ← API Key + 資料保護清單（含機密，勿外流）
 │                                     ⚠️ 這裡「沒有」目標檔案路徑 —— 見文件開頭說明
 ├── .claude/
@@ -695,10 +696,11 @@ dotnet build .\pbibridge_csharp -c Release
 服務啟動時會 `SetCurrentDirectory(AppContext.BaseDirectory)`，讀的是
 **`bin\Release\net8.0\appsettings.json`** —— 那是建置時複製過去的副本，不是專案根目錄那份。
 
-改完設定必須 **重新建置 + 重啟服務**。而且 MSBuild 是**依時間戳做增量複製**：
+改完設定請使用者**關掉黑窗、重新雙擊 🚀** —— 啟動檔每次啟動都會把專案根目錄那份**直接複製**到 bin（不看時間戳）。
+不經過啟動檔、只跑 `dotnet build` 則不保險，因為 MSBuild 是**依時間戳做增量複製**：
 如果你是還原備份或用較舊的檔案覆蓋，時間戳沒變新，建置會直接跳過複製，設定依然是舊的。
 
-保險做法（改完設定就跑這兩行）：
+不經過啟動檔時的保險做法：
 
 ```powershell
 (Get-Item .\pbibridge_csharp\appsettings.json).LastWriteTime = Get-Date
@@ -719,7 +721,7 @@ Copy-Item .\pbibridge_csharp\appsettings.json .\pbibridge_csharp\bin\Release\net
 | 401 Unauthorized | Key 錯誤或沒帶 Header | 重讀 `appsettings.json` |
 | 404 Not Found | 執行中的是舊版建置 | 重新 build 並重啟服務（流程見「建置指令」，**由使用者關窗、由使用者開 `.bat`**） |
 | `MSB3027 檔案鎖定者` | 服務還在跑，DLL 鎖住 | **編譯是過的**，只差複製。請使用者關掉主控台視窗，再重跑 `dotnet build` |
-| `address already in use` | 已有實例佔用 5500 | **不要自己砍行程**（會觸發防毒）。請使用者關掉舊的主控台視窗再重開 `.bat`；常有第二個實例，請他確認工作列上沒有漏掉的視窗 |
+| `address already in use` / 啟動檔說 `Port 5500 is used by a different program` | 別的程式佔用 5500（常見是 VS Code Live Server） | **不要自己砍行程**（會觸發防毒）。請使用者關掉那個程式再雙擊 🚀。佔用者若是本服務，啟動檔會直接開儀表板、不會報錯 —— 要重啟服務就請使用者先關掉舊的黑窗 |
 | `需要重新計算，因此未包含任何資料` | 建了計算表／關聯但沒重算 | `Invoke-PbiRefresh -RefreshType calculate` |
 | `410` + 「M 腳本唯讀」 | 想用 API 寫 M | 這是刻意擋的。給使用者完整 `let...in`，請他貼進進階編輯器並「關閉並套用」 |
 | PBI 顯示「查詢中有暫止的變更尚未套用」，按套用後又出現 | Desktop 的 PQ 文件與 TOM 模型失步（多半是有人繞過去寫了 M） | 只能人工解：請使用者到進階編輯器把正確的 M 貼上並「關閉並套用」 |

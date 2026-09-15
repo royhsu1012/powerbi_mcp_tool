@@ -6,6 +6,9 @@
     <!-- CA1416「只有 Windows 支援」：這是 Windows 專屬工具（依賴 msmdsrv 行程與 Win32 API），
          這個警告永遠成立也永遠無害。留著只會在安裝時刷出一整面紅字嚇到人。 -->
     <NoWarn>$(NoWarn);CA1416</NoWarn>
+    <!-- 只裝了 .NET 9 / 10 的電腦也要能執行：沒有 .NET 8 Runtime 時改用較新的主版本。
+         預設只會往上找次版本，缺 8.x 就直接啟動失敗。 -->
+    <RollForward>Major</RollForward>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.AnalysisServices.AdomdClient.NetCore.retail.amd64" Version="19.82.0" />

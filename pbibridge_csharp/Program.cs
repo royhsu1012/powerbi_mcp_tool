@@ -1669,7 +1669,63 @@ namespace PBIBridgeCSharp {
             }
         }
 
+        /// <summary>
+        /// 繁中 Windows 的主控台預設是 cp950，裝不下 emoji —— 直接輸出會變成一排 "??"，看起來像亂碼。
+        /// 包一層：常用的 emoji 換成文字標記，其他主控台編碼裝不下的字元直接拿掉。
+        /// 主控台已經是 UTF-8 時不會用到這個類別，emoji 原樣輸出。
+        /// </summary>
+        sealed class ConsoleSymbolWriter : TextWriter {
+            static readonly Dictionary<string, string> Tags = new() {
+                ["🔐"] = "[安全]", ["💾"] = "[快照]", ["🛡"] = "[保護]", ["📋"] = "[稽核]",
+                ["📂"] = "[實例]", ["🌐"] = "[網頁]", ["🔑"] = "[權杖]", ["🔓"] = "[放行]",
+                ["🎯"] = "[目標]", ["⚠"] = "[注意]", ["✅"] = "[OK]", ["❌"] = "[錯誤]", ["⛔"] = "[擋下]",
+            };
+            readonly TextWriter _inner;
+            readonly System.Text.Encoding? _probe;   // 用來判斷「主控台裝不裝得下這個字」
+
+            public ConsoleSymbolWriter(TextWriter inner, int codePage) {
+                _inner = inner;
+                try {
+                    System.Text.Encoding.RegisterProvider(System.Text.CodePagesEncodingProvider.Instance);
+                    _probe = System.Text.Encoding.GetEncoding(codePage,
+                        System.Text.EncoderFallback.ExceptionFallback, System.Text.DecoderFallback.ExceptionFallback);
+                } catch {
+                    _probe = null;   // 拿不到碼頁就只做 emoji 對照，並拿掉代理字元組
+                }
+            }
+
+            public override System.Text.Encoding Encoding => _inner.Encoding;
+
+            string Clean(string? s) {
+                if (string.IsNullOrEmpty(s)) return s ?? "";
+                var sb = new System.Text.StringBuilder(s.Length);
+                var e = System.Globalization.StringInfo.GetTextElementEnumerator(s);
+                while (e.MoveNext()) {
+                    var el = e.GetTextElement();
+                    if (Tags.TryGetValue(el.Replace("️", ""), out var tag)) { sb.Append(tag); continue; }
+                    if (_probe == null) {
+                        if (!char.IsSurrogate(el[0])) sb.Append(el);
+                        continue;
+                    }
+                    try { _probe.GetByteCount(el); sb.Append(el); }
+                    catch (System.Text.EncoderFallbackException) { /* 主控台裝不下，拿掉 */ }
+                }
+                return sb.ToString();
+            }
+
+            public override void Write(char value)          => Write(value.ToString());
+            public override void Write(string? value)       => _inner.Write(Clean(value));
+            public override void WriteLine(string? value)   => _inner.WriteLine(Clean(value));
+            public override void WriteLine()                => _inner.WriteLine();
+            public override void Flush()                    => _inner.Flush();
+        }
+
         static void Main(string[] args) {
+            // 主控台不是 UTF-8 時（繁中 Windows 預設 cp950），emoji 會印成 "??" —— 改印文字標記
+            var consoleCodePage = Console.OutputEncoding.CodePage;
+            if (consoleCodePage != 65001)
+                Console.SetOut(TextWriter.Synchronized(new ConsoleSymbolWriter(Console.Out, consoleCodePage)));
+
             // ✅ 強制將工作目錄設為 DLL 所在位置，防止捷徑啟動時找不到 appsettings.json
             System.IO.Directory.SetCurrentDirectory(System.AppContext.BaseDirectory);
 
@@ -1678,6 +1734,9 @@ namespace PBIBridgeCSharp {
             Console.WriteLine("======================================");
 
             var builder = WebApplication.CreateBuilder(args);
+
+            // ASP.NET 預設把每個請求都印成 info，會淹沒資料保護的警告與一次性權杖 —— 只留警告以上
+            builder.Logging.SetMinimumLevel(LogLevel.Warning);
 
             // ✅ 修補①：讀取 appsettings.json，集中管理路徑與密鑰
             builder.Configuration.AddJsonFile("appsettings.json", optional: false, reloadOnChange: false);
@@ -1720,7 +1779,12 @@ namespace PBIBridgeCSharp {
             DataGuard.AuditPath = Path.Combine(auditDir, $"query-audit-{DateTime.Now:yyyyMM}.tsv");
 
             var allowedOrigins  = config.GetSection("Security:AllowedOrigins").Get<string[]>()
-                                  ?? new[] { "http://localhost:5500", "null" };
+                                  ?? new[] { "http://localhost:5500", "http://127.0.0.1:5500" };
+            // "null" 是舊版用 file:// 開儀表板時需要的來源。儀表板現在由本服務提供（同源），用不到了；
+            // 留著反而等於允許任何網站的沙箱 iframe（來源同樣是 "null"）呼叫本服務 —— 舊設定檔裡有也一律剔除。
+            allowedOrigins = allowedOrigins
+                .Where(o => !string.Equals(o, "null", StringComparison.OrdinalIgnoreCase))
+                .ToArray();
 
             Console.WriteLine($"🔐 安全模式啟用 — Key: {apiKey[..8]}...");
             Console.WriteLine($"💾 快照資料夾: {snapshotPath}");
@@ -1771,10 +1835,25 @@ namespace PBIBridgeCSharp {
             var app = builder.Build();
             app.UseCors();
 
-            // ✅ 修補③：全域 API Key 驗證（所有 /api/* 都需帶 X-API-Key Header）
+            // 只接受以 localhost / 127.0.0.1 呼叫。擋 DNS rebinding：惡意網站把自己的網域解析到
+            // 127.0.0.1 之後，瀏覽器會把它當成同源 —— 沒有這道檢查，它就讀得到帶金鑰的儀表板頁面。
             app.Use(async (context, next) => {
-                // 放行 ping 測試與瀏覽器的 CORS 預檢請求 (OPTIONS 不帶自訂標頭)
-                if (context.Request.Path == "/ping" || context.Request.Method == "OPTIONS") {
+                var host = context.Request.Host.Host;
+                bool isLocal = host.Equals("localhost", StringComparison.OrdinalIgnoreCase)
+                            || host == "127.0.0.1" || host == "[::1]" || host == "::1";
+                if (!isLocal) {
+                    context.Response.StatusCode = 400;
+                    await context.Response.WriteAsync("❌ 400 只接受以 localhost 連線");
+                    Console.WriteLine($"[{DateTime.Now:HH:mm:ss}] ⚠️ 拒絕非 localhost 的連線（Host: {host}）");
+                    return;
+                }
+                await next();
+            });
+
+            // ✅ 修補③：API Key 驗證（所有 /api/* 都需帶 X-API-Key Header）
+            app.Use(async (context, next) => {
+                // 放行非 API 路徑（/ping、儀表板頁面）與瀏覽器的 CORS 預檢請求 (OPTIONS 不帶自訂標頭)
+                if (!context.Request.Path.StartsWithSegments("/api") || context.Request.Method == "OPTIONS") {
                     await next();
                     return;
                 }
@@ -1787,6 +1866,29 @@ namespace PBIBridgeCSharp {
                 await next();
             });
             app.MapGet("/ping", () => "pong");
+
+            // ── 網頁儀表板：由本服務提供，並把金鑰帶進頁面 ─────────────────────────
+            // 以前用 file:// 直接開 HTML，只能叫使用者手動貼金鑰。改由服務提供後：
+            //   · 頁面與 API 同源，使用者不需要知道金鑰的存在
+            //   · 其他網站讀不到這個頁面：CORS 白名單不含它們，也不再允許 "null" 來源
+            //   · DNS rebinding 由上方的 Host 檢查擋下
+            // 本機程式本來就能直接讀 appsettings.json 或連 msmdsrv，金鑰從來擋不住它們，
+            // 所以把金鑰放進「只有本機拿得到」的頁面，不會降低安全性。
+            // 每次請求都重新讀檔：改 HTML 不必重新編譯。
+            IResult ServePage(HttpContext ctx, string fileName, bool injectKey) {
+                var path = Path.Combine(projectRoot, fileName);
+                if (!File.Exists(path)) return Results.NotFound($"找不到 {fileName}（應位於 {projectRoot}）");
+                var html = File.ReadAllText(path, System.Text.Encoding.UTF8);
+                if (injectKey) {
+                    var script = $"<script>window.PBI_API_KEY = {System.Text.Json.JsonSerializer.Serialize(apiKey)};</script>";
+                    html = html.Replace("</head>", script + "</head>");
+                    ctx.Response.Headers.CacheControl = "no-store";
+                }
+                return Results.Content(html, "text/html; charset=utf-8");
+            }
+            app.MapGet("/", (HttpContext ctx) => ServePage(ctx, "PowerBI_Visualizer.html", injectKey: true));
+            app.MapGet("/PowerBI_Visualizer.html", (HttpContext ctx) => ServePage(ctx, "PowerBI_Visualizer.html", injectKey: true));
+            app.MapGet("/API_Documentation.html", (HttpContext ctx) => ServePage(ctx, "API_Documentation.html", injectKey: false));
 
             // =====================================================================
             // 讀取
@@ -2713,6 +2815,15 @@ namespace PBIBridgeCSharp {
             });
 
             Console.WriteLine("✅ 伺服器已在背景運行 (等待網頁於 Port 5500 呼叫)！");
+            // 服務真的開始接受連線後才開瀏覽器 —— 由啟動檔先開的話，頁面會比服務早到而顯示連線失敗。
+            // 開的是網址（交給預設瀏覽器），不是執行檔。
+            const string dashboardUrl = "http://localhost:5500/";
+            app.Lifetime.ApplicationStarted.Register(() => {
+                Console.WriteLine($"🌐 網頁儀表板：{dashboardUrl}");
+                try { Process.Start(new ProcessStartInfo(dashboardUrl) { UseShellExecute = true }); }
+                catch (Exception ex) { Console.WriteLine($"⚠️ 無法自動開啟瀏覽器（{ex.Message}），請手動開啟上面的網址"); }
+            });
+
             app.Run();
         }
     }

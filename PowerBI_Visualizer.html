@@ -225,56 +225,30 @@
     <script>
         let pbiSchema = { Tables: [] };
 
+        // 這個頁面由橋接服務提供（http://localhost:5500/），服務會把金鑰帶進 window.PBI_API_KEY，
+        // 使用者不需要貼任何東西。直接雙擊 HTML（file://）拿不到金鑰 —— 服務有在跑就轉過去，沒有就說明怎麼啟動。
+        const openedAsFile = location.protocol === 'file:';
+        if (openedAsFile) {
+            fetch('http://localhost:5500/ping', { mode: 'no-cors' })
+                .then(() => location.replace('http://localhost:5500/'))
+                .catch(() => {
+                    document.getElementById('mainContent').innerHTML = `
+                        <div style="text-align:center; margin-top:100px;">
+                            <h2>橋接服務沒有在執行</h2>
+                            <p style="color: var(--text-muted);">請雙擊資料夾裡的「🚀啟動PBI終極儀表板.bat」，儀表板會自動打開。</p>
+                        </div>`;
+                });
+        }
+
         // 載入時自動連線
         document.addEventListener('DOMContentLoaded', async () => {
+            if (openedAsFile) return;
             await refreshInstances();
             fetchSchema();
         });
 
-        // 取得 API Key（第一次會問，之後存在 localStorage）
-        // 有些內嵌瀏覽器不支援 prompt()，所以要能退回頁內輸入，不能讓整頁連環報錯
         function getApiKey() {
-            let k = localStorage.getItem('PBI_API_KEY');
-            if (k) return k;
-            try {
-                k = prompt("請貼上 appsettings.json 中 Security.ApiKey 的值（只需輸入一次，瀏覽器會自動記住）：");
-                if (k) { localStorage.setItem('PBI_API_KEY', k.trim()); return k.trim(); }
-            } catch (e) {
-                showKeyPrompt();
-            }
-            return "";
-        }
-
-        // prompt() 不可用時的替代：直接在頁面上放一個輸入框
-        function showKeyPrompt() {
-            if (document.getElementById('inlineKeyBox')) return;
-            const box = document.createElement('div');
-            box.id = 'inlineKeyBox';
-            box.style.cssText = 'position:fixed; inset:0; display:flex; align-items:center; justify-content:center;'
-                              + 'background:rgba(0,0,0,0.7); z-index:999;';
-            box.innerHTML = `
-                <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.15); border-radius:12px; padding:28px; max-width:460px;">
-                    <h3 style="margin:0 0 10px; color:#f8fafc;">需要 API Key</h3>
-                    <p style="margin:0 0 16px; color:#94a3b8; font-size:14px; line-height:1.6;">
-                        請貼上 <code>pbibridge_csharp/appsettings.json</code> 中 <code>Security.ApiKey</code> 的值。
-                        只需輸入一次，瀏覽器會記住。
-                    </p>
-                    <input id="inlineKeyInput" type="password" placeholder="API Key"
-                           style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2);
-                                  background:rgba(0,0,0,0.3); color:#f8fafc; font-family:monospace;">
-                    <button onclick="saveInlineKey()"
-                            style="margin-top:14px; width:100%; padding:10px; border:none; border-radius:8px;
-                                   background:#38bdf8; color:#0f172a; font-weight:700; cursor:pointer;">儲存並重新載入</button>
-                </div>`;
-            document.body.appendChild(box);
-        }
-
-        function saveInlineKey() {
-            const v = document.getElementById('inlineKeyInput').value.trim();
-            if (!v) return;
-            localStorage.setItem('PBI_API_KEY', v);
-            document.getElementById('inlineKeyBox').remove();
-            refreshInstances().then(fetchSchema);
+            return window.PBI_API_KEY || '';
         }
 
         // 送出請求時一律帶上目前選定的實例；沒選就交給伺服器判斷
@@ -289,8 +263,8 @@
         async function refreshInstances() {
             const picker = document.getElementById('instancePicker');
             try {
-                const res = await fetch('http://localhost:5500/api/instances', { headers: { 'X-API-Key': getApiKey() } });
-                if (res.status === 401) { localStorage.removeItem('PBI_API_KEY'); throw new Error('API Key 認證失敗'); }
+                const res = await fetch('/api/instances', { headers: { 'X-API-Key': getApiKey() } });
+                if (res.status === 401) throw new Error('金鑰不符：服務可能已重新啟動，請重新整理頁面（F5）');
                 if (!res.ok) throw new Error(await res.text());
                 const data = await res.json();
                 const list = data.instances || data.Instances || [];
@@ -336,13 +310,12 @@
                 await refreshInstances();
 
                 // 向本機 C# 伺服器要資料，帶上金鑰與選定的實例
-                const response = await fetch('http://localhost:5500/api/schema', {
+                const response = await fetch('/api/schema', {
                     headers: apiHeaders()
                 });
 
                 if (response.status === 401) {
-                    localStorage.removeItem('PBI_API_KEY'); // 密碼錯誤就刪除，下回重問
-                    throw new Error("API Key 認證失敗！請重新整理網頁，並確實貼上黑窗中的金鑰。");
+                    throw new Error("金鑰不符：服務可能已重新啟動，請重新整理頁面（F5）。");
                 }
                 if (!response.ok) {
                     const err = await response.text();
@@ -374,7 +347,7 @@
                     <p style="color: var(--text-main);">小精靈無法與您的背景伺服器取得聯繫。</p>
                     <p style="color: var(--text-muted); font-size:14px; text-align:left; max-width: 400px; margin: 20px auto;">
                         👉 檢查 1：您是否有先開啟任何一份 Power BI 檔案？（必須要有檔案 PBI 引擎才會啟動）<br><br>
-                        👉 檢查 2：您的桌面是否已經執行過「🚀啟動PBI終極儀表板的捷徑」使伺服器常駐？
+                        👉 檢查 2：服務的黑窗還開著嗎？關掉了的話，請雙擊資料夾裡的「🚀啟動PBI終極儀表板.bat」。
                     </p>
                     <p style="font-size:12px; color:rgba(239, 68, 68, 0.6);">${error.message}</p>
                 </div>
