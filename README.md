@@ -40,7 +40,7 @@ Power BI Desktop #1   Power BI Desktop #2   …
 
 ## 1. 快速開始
 
-1. **解壓縮到本機資料夾**，例如 `C:\PBI_AI_Bridge`（不要放 OneDrive，不要在 zip 裡直接執行）
+1. **下載並解壓縮**：在 GitHub 頁面按 **Code → Download ZIP**（會用 git 的話 `git clone` 也可以），解壓縮到本機資料夾，例如 `C:\PBI_AI_Bridge`。解出來的資料夾名稱（`powerbi_mcp_tool-main`）可以自己改。不要放 OneDrive，也不要在 zip 裡直接執行
 2. 開啟一份 Power BI 檔案（.pbix 或 .pbip）
 3. 雙擊 **`🚀啟動PBI終極儀表板.bat`**，照畫面回答 Y / N
 4. 儀表板自動打開後，**保持黑窗開著**（關掉＝停止服務）
@@ -48,7 +48,8 @@ Power BI Desktop #1   Power BI Desktop #2   …
 
 第一次視需要安裝的東西而定，約 2～5 分鐘；之後每次幾秒鐘。
 
-> 💡 從 Email / Teams 下載的 zip：**解壓縮前**在 zip 上按右鍵 → 內容 → 勾選「解除封鎖」，可以避免之後 Windows 與 PowerShell 擋下檔案。
+> 💡 **強烈建議**：從 GitHub、Email 或 Teams 下載的 zip，**解壓縮前**先在 zip 上按右鍵 → 內容 → 勾選「解除封鎖」→ 確定。
+> 不做的話，Windows 會把裡面每個檔案都標成「來自網際網路」：每次雙擊啟動檔都會跳安全性警告，自己在 PowerShell 執行 `tools\` 裡的腳本也會被擋（`is not digitally signed`）。啟動檔本身與 Claude Code 裡的 AI 不受影響。
 
 ---
 
@@ -427,7 +428,7 @@ PBI_AI_Bridge/
 
 | 症狀 | 處理 |
 |---|---|
-| 雙擊 .bat 跳「Windows 已保護您的電腦」 | 從網路下載的檔案。按「其他資訊」→「仍要執行」，或解壓縮前在 zip 按右鍵 → 內容 → 解除封鎖 |
+| 雙擊 .bat 跳「開啟檔案 - 安全性警告」或「Windows 已保護您的電腦」 | 從網路下載的檔案都會這樣。前者按「執行」，後者按「其他資訊」→「仍要執行」。想以後都不再跳：刪掉解出來的資料夾，在 zip 上按右鍵 → 內容 → 勾「解除封鎖」後重新解壓縮 |
 | 啟動檔找不到 .NET SDK | 按 Y 讓它用 winget 安裝；不行就按 O 手動安裝「.NET SDK 8.x.x」，裝好按 R。見[第 3 節](#如果問你要不要安裝-net-sdk) |
 | 啟動檔 4/5 下載失敗 | 見[套件下載失敗](#套件下載失敗) |
 | `[WARNING] This folder is inside OneDrive` | 建議把資料夾搬到本機，例如 `C:\PBI_AI_Bridge` |
@@ -446,7 +447,7 @@ PBI_AI_Bridge/
 
 ### PowerShell 無法執行腳本
 
-錯誤訊息類似「因為這個系統上已停用指令碼執行」或「檔案未經數位簽署」。依序嘗試：
+錯誤訊息類似「因為這個系統上已停用指令碼執行」或「檔案未經數位簽署」（英文介面是 `running scripts is disabled` 或 `is not digitally signed`）。依序嘗試：
 
 1. **解除下載封鎖**（最常見）—— 在工具資料夾開 PowerShell 執行：
    ```powershell
