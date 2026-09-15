@@ -309,7 +309,7 @@ echo       The default list only knows English column names such as
 echo       customer, amount, price. If your model uses Chinese column names,
 echo       add them to the DataProtection section of
 echo         pbibridge_csharp\appsettings.json
-echo       The usage guide, section 4, has examples.
+echo       See README.md, section 4, for examples.  
 echo       ------------------------------------------------------------------
 echo.
 choice /c YN /n /m "      Open that file in Notepad now? [Y/N] "

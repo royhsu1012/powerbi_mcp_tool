@@ -639,8 +639,7 @@ TOM 的 `SaveChanges()` 只改 Power BI Desktop **記憶體中**的模型。畫�
 PBI_AI_Bridge/
 ├── CLAUDE.md                      ← 本文件（AI 工作規範）
 ├── AGENTS.md                      ← 其他 AI 代理（Codex / Cursor …）的入口，指向本文件
-├── README.md                      ← 給人看的總覽
-├── 使用說明.md                    ← 給同事的逐步使用教學
+├── README.md                      ← 給人看的完整說明（安裝、使用流程、資料保護清單、疑難排解）
 ├── 🚀啟動PBI終極儀表板.bat          ← 唯一的啟動檔（自動偵測階段：已在跑就開儀表板 → 缺 SDK／套件時詢問並安裝 → 程式有改才編譯 → 起服務）
 │                                     ⚠️ 只能有 ASCII 字元、行尾必須 CRLF（cmd 以位元組定位，否則 goto 會錯位）
 ├── PowerBI_Visualizer.html        ← 網頁儀表板。由服務在 http://localhost:5500/ 提供並帶入金鑰（直接雙擊會自動轉址）
