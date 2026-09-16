@@ -161,7 +161,7 @@ where winget >nul 2>&1
 if errorlevel 1 goto SDK_MANUAL
 echo       It can be installed right here with winget, the installer built into Windows:
 echo         Package   Microsoft .NET SDK 8   id: Microsoft.DotNet.SDK.8
-echo         Source    Microsoft, about 250 MB
+echo         Source    Microsoft, about 210 MB
 echo         Note      Windows may ask for administrator permission.
 echo.
 choice /c YN /n /m "      Install it now? [Y/N] "

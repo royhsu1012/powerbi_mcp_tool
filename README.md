@@ -59,7 +59,7 @@ Power BI Desktop #1   Power BI Desktop #2   …
 |---|---|
 | Windows 10 / 11 | 僅支援 Windows |
 | Power BI Desktop | 要**開著至少一份檔案**才有東西可以連 |
-| .NET SDK 8 以上 | **沒有也沒關係**：啟動檔會問你要不要用 Windows 內建的 `winget` 直接安裝（約 250 MB，可能要系統管理員權限）。只裝 Runtime 不夠，必須是 SDK |
+| .NET SDK 8 以上 | **沒有也沒關係**：啟動檔會問你要不要用 Windows 內建的 `winget` 直接安裝（約 210 MB，可能要系統管理員權限）。只裝 Runtime 不夠，必須是 SDK |
 | 網路（僅第一次） | 從 **nuget.org** 下載 6 個相依套件，共約 17 MB，之後離線可用。瀏覽器打得開 <https://api.nuget.org/v3/index.json> 就沒問題 |
 | Windows PowerShell 5.1 | 系統內建 |
 | AI 代理（選用） | Claude Code（建議）—— Claude 桌面版的 **Code** 分頁，或終端機的 `claude` 指令。Codex、Cursor、Antigravity、Gemini CLI 等也可以，它們會讀 [AGENTS.md](AGENTS.md) |
