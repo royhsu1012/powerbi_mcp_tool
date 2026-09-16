@@ -370,7 +370,7 @@ Headers: `X-API-Key: <key>`　＋　`X-PBI-Target: <Port 或檔名片段>`（多
 
 | 端點 | 方法 | 用途 |
 |---|---|---|
-| `/api/refresh` | POST | **重新整理資料**。改完 M 要 `full`；建完計算表／關聯／計算群組要 `calculate` |
+| `/api/refresh` | POST | **重新整理資料**。建完計算表／計算項目指定該表；建／改關聯、計算資料行用 `calculate`。M 不在此列 —— 使用者「關閉並套用」時 Power BI 會自己重整 |
 | `/api/save` | POST | **模擬 Ctrl+S 存檔**，並用檔案修改時間驗證是否真的存到 |
 
 ### 寫入（會改動模型，動手前先確認）
