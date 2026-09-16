@@ -85,13 +85,26 @@ rem === [4/5] libraries ========================================================
 :STEP_LIBS
 echo [4/5] Libraries
 if exist "%ASSETS%" goto LIBS_OK
+
+rem A freshly downloaded copy has no obj\, but the libraries may already sit in
+rem this computer's NuGet cache (another copy fetched them). Restore is then
+rem instant and offline - so do not ask about a download that will not happen.
+set "NUGET_ROOT=%USERPROFILE%\.nuget\packages"
+if defined NUGET_PACKAGES set "NUGET_ROOT=%NUGET_PACKAGES%"
+if exist "%NUGET_ROOT%\microsoft.analysisservices.netcore.retail.amd64" goto LIBS_CACHED
+
 echo       First run: 6 libraries must be downloaded from nuget.org, about 17 MB.
 echo       They are Microsoft's Analysis Services client libraries. Only this once.
 echo.
 choice /c YN /n /m "      Download them now? [Y/N] "
 if errorlevel 2 goto LIBS_DECLINED
-:LIBS_RETRY
 echo       Downloading...
+goto LIBS_RETRY
+
+:LIBS_CACHED
+echo       Already on this computer - reusing the cached copies.
+
+:LIBS_RETRY
 "%DOTNET%" restore "%PROJECT%" --nologo -v q
 if errorlevel 1 goto RESTORE_FAIL
 :LIBS_OK
