@@ -461,11 +461,15 @@ namespace PBIBridgeCSharp {
         //
         // 原因：Power BI Desktop 的 Power Query 文件與 TOM 模型是**兩份獨立的東西**。
         // 用 TOM 改 MPartitionSource 只動到模型那份，Desktop 自己那份不會跟著變，
-        // 兩邊一失步 Desktop 就會永久顯示「查詢中有暫止的變更尚未套用」——
-        // 按「套用變更」是拿 Desktop 那份舊 M 去跑，跑完不一致依然存在，橫幅又回來，
-        // 陷入死迴圈，只能請使用者手動到進階編輯器貼一次才解得開。
+        // Desktop 會顯示「查詢中有暫止的變更尚未套用」。按「套用」是可以更新的
+        // （2026-09-16 更正：這裡原本寫「解不開、死迴圈」是錯的），但兩邊內容不同時，
+        // Desktop 那份有可能把 API 寫進去的 M 蓋掉 —— 問題不是「做不到」，
+        // 而是「誰覆蓋誰不明確，容易默默丟掉使用者的改動」。
         //
-        // 正確做法：M 只讀不寫。要改 M 就把完整的 let...in 交給使用者，
+        // PBIP 還有另一條路：M 以 TMDL 檔案存在專案資料夾，可以改檔案再讓 Desktop 重載。
+        // 本服務尚未實作也未驗證，要做請先在測試檔上驗證再說。
+        //
+        // 目前做法：M 只讀不寫。要改 M 就把完整的 let...in 交給使用者，
         // 由他在 Power Query 編輯器貼上並「關閉並套用」，走 Desktop 自己的路徑。
         // 讀取請用 /api/schema 的 MQuery 欄位（Get-PbiMQuery）。
         //
@@ -949,8 +953,8 @@ namespace PBIBridgeCSharp {
             "add-column"          => OpAddColumn(model, Args<AddColumnRequest>(args)),
             // "update-m" 已移除 —— M 腳本唯讀，原因見 OpUpdateM 移除處的說明
             "update-m"            => throw new OpException(
-                "❌ update-m 已移除：M 腳本一律唯讀。用 TOM 改 M 會讓 Power BI Desktop 的 " +
-                "Power Query 文件與模型失步，卡在「查詢中有暫止的變更尚未套用」。" +
+                "❌ update-m 已移除：目前 M 一律唯讀。用 TOM 改 M 只動到模型那份，Desktop 會顯示 " +
+                "「查詢中有暫止的變更尚未套用」；按套用可以更新，但也可能反過來用 Desktop 那份覆蓋掉。" +
                 "請把完整的 let...in 交給使用者，由他在進階編輯器貼上並「關閉並套用」。", 410),
             "upsert-relationship" => OpUpsertRelationship(model, Args<RelationshipRequest>(args)),
             "delete-relationship" => OpDeleteRelationship(model, Args<RelationshipRefRequest>(args)),
@@ -2560,7 +2564,7 @@ namespace PBIBridgeCSharp {
             app.MapPost("/api/update-m", () => Results.Json(new {
                 error = "M 腳本唯讀：/api/update-m 已移除",
                 why   = "用 TOM 改 M 只動到模型，Power BI Desktop 的 Power Query 文件不會跟著變，" +
-                        "兩邊失步後 Desktop 會永久顯示「查詢中有暫止的變更尚未套用」，按套用也解不開。",
+                        "Desktop 會顯示「查詢中有暫止的變更尚未套用」；按套用可更新，但兩邊不同時 API 寫的 M 可能被蓋掉。",
                 how   = "把完整的 let...in 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。",
                 read  = "要讀 M 請用 GET /api/schema 的 MQuery 欄位（PowerShell：Get-PbiMQuery <表名>）"
             }, statusCode: 410));

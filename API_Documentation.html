@@ -373,7 +373,7 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <h4>從快照還原</h4>
                         <p>還原量值、計算資料行、關聯線、M 腳本、共用運算式。支援 <code>DryRun</code> 先看差異清單。</p>
                         <span class="note danger"><i data-icon="alert"></i><span><strong>還原不是合併，是回到當時的狀態</strong> —— 快照中不存在的量值與關聯<u>會被刪掉</u>。另外它<u>不會刪除表格與角色</u>，也不改模型層級屬性；沒被涵蓋的項目會列在回應的 <code>Uncovered</code> 裡，別忽略。</span></span>
-                        <span class="note warn"><i data-icon="alert"></i><span><strong>預設範圍包含 M 腳本</strong>。用 API 改 M 會讓 Desktop 的 Power Query 與模型失步（見<a href="#p8">第捌部</a>）—— 只想還原量值請明確給 <code>Scope: ["measures"]</code>。</span></span>
+                        <span class="note warn"><i data-icon="alert"></i><span><strong>預設範圍包含 M 腳本</strong>。還原 M 之後 Desktop 會出現待套用提示（見<a href="#p8">第捌部</a>）—— 只想還原量值請明確給 <code>Scope: ["measures"]</code>。</span></span>
                         <span class="note"><i data-icon="shield"></i><span>只在<strong>目標模型自己的</strong>快照資料夾裡找檔案，路徑分隔字元一律拒絕 —— 結構上就不可能把 A 模型的快照還原到 B 模型。</span></span>
                         <span class="code">{ "File": "20260805_121110__before.json",
   "DryRun": true, "Scope": ["measures"] }</span>
@@ -468,7 +468,7 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <span class="code">{ "TableName": "指標", "Kind": "calculated",
   "Expression": "DATATABLE(\"k\", STRING, {{\"a\"}})" }</span>
                         <span class="note"><i data-icon="info"></i><span>建立後需要 <code>refresh</code> 該表，否則查詢會回「未包含任何資料」。</span></span>
-                        <span class="note warn"><i data-icon="alert"></i><span><code>Kind: "m"</code> 同樣是用 API 寫 M，會讓 Desktop 的 Power Query 與模型失步。非必要不要用。</span></span>
+                        <span class="note warn"><i data-icon="alert"></i><span><code>Kind: "m"</code> 同樣是用 API 寫 M，之後 Desktop 會出現待套用提示，套用時要確認留下的是預期的版本。</span></span>
                     </div>
                     <div class="api-card destructive">
                         <div class="badges"><span class="tag post">POST</span><span class="tag danger">不可復原</span></div>
@@ -522,7 +522,7 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <h3><s>/api/update-m</s></h3>
                         <h4>已移除（2026-08-06）—— M 腳本唯讀</h4>
                         <p>呼叫會回 <span class="hl">410</span>。要讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code>）。</p>
-                        <span class="note warn"><i data-icon="alert"></i><span><strong>為什麼拿掉：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。用 TOM 改 M 只動到模型那份，Desktop 那份不會跟著變；兩邊一失步，Desktop 就永久顯示「查詢中有暫止的變更尚未套用」，按「套用變更」是拿舊 M 去跑，橫幅又回來，陷入死迴圈。<br>
+                        <span class="note warn"><i data-icon="alert"></i><span><strong>為什麼拿掉：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。用 TOM 改 M 只動到模型那份，Desktop 那份不會跟著變，會顯示「查詢中有暫止的變更尚未套用」 —— 按「套用」可以更新，但兩邊內容不同時，API 寫進去的 M 有可能被 Desktop 那份蓋掉。<br>
                         <strong>正確做法：</strong>把完整的 <code>let...in</code> 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。</span></span>
                     </div>
                     <div class="api-card">

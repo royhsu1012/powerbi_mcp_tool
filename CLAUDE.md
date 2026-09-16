@@ -500,16 +500,21 @@ Set-PbiMeasure -Table "量值" -Name "銷售總額" -Expression "SUM(FactSales[A
 | 決定 | 這個轉換對不對 | — |
 | 寫 | — | 全部的 M |
 
-### ⛔ 硬規則：M 腳本唯讀，API 不能寫，一律交給使用者貼
+### 目前規則：M 腳本唯讀，API 不寫入，一律交給使用者貼
 
 `/api/update-m` 與 `Set-PbiMQuery` 已於 **2026-08-06 移除**，用了會回 **410**。
 **不要想辦法繞過**（不要改用 `/api/batch`、不要用 `/api/create-table` 重建同名表）。
 
-原因是實際踩過的坑，不是保守：**Power BI Desktop 的 Power Query 文件與 TOM 模型是兩份獨立的東西。**
-用 TOM 改 M 只動到模型那份，Desktop 自己那份不會跟著變。兩邊一失步，Desktop 就永久顯示
-「查詢中有暫止的變更尚未套用」；按「套用變更」是拿 Desktop 那份**舊 M** 去跑，
-跑完不一致依然存在，橫幅又冒出來 —— 死迴圈，只能請使用者手動到進階編輯器貼一次才解得開。
-編輯器有沒有開著都一樣會發生。
+**Power BI Desktop 的 Power Query 文件與 TOM 模型是兩份獨立的東西。**
+用 TOM 改 M 只動到模型那份，Desktop 自己那份不會跟著變，於是 Desktop 會顯示
+「查詢中有暫止的變更尚未套用」。**按「套用」就會更新** —— 使用者 2026-09-16 回報，
+先前文件寫「解不開、死迴圈」是錯的，已更正。
+
+真正要注意的是**套用後留下哪一份**：兩邊內容不同時，Desktop 那份可能把 API 寫進去的 M 蓋掉。
+所以動 M 之前先跟使用者講清楚，套用後請他確認 M 是預期的版本。
+
+PBIP 格式還有另一條路：M 以檔案形式存在專案資料夾（TMDL），改檔案再讓 Desktop 重載 ——
+**本工具尚未實作也未驗證**，不要自己臨時發明做法。
 
 所以 M 一律是：**AI 讀 + AI 寫碼 + 使用者貼**。
 
@@ -521,7 +526,7 @@ Get-PbiMQuery <表名> -Label <標籤>   # ✅ 讀，並留一份 .pq 備份
 貼完由 **Power BI 自己**跑重整（「關閉並套用」就會跑），不需要 `Invoke-PbiRefresh`。
 之後用 `Compare-PbiTableProfile` 做量化驗證。
 
-> ⚠️ 還有兩條路仍會寫 M，是刻意保留的，用之前要想清楚後果（同樣會造成上述失步）：
+> ⚠️ 還有兩條路仍會寫 M，是刻意保留的，用之前要想清楚後果（同樣會讓 Desktop 出現待套用提示）：
 > `/api/restore` 的 `mquery` 範圍（**預設就包含**，`Restore-PbiSnapshot` 不指定 `-Scope` 就會改到 M —— 
 > 只想還原量值就明確給 `-Scope measures`）、以及 `/api/create-table` 的 `Kind=m`。
 
@@ -725,7 +730,7 @@ Copy-Item .\pbibridge_csharp\appsettings.json .\pbibridge_csharp\bin\Release\net
 | `address already in use` / 啟動檔說 `Port 5500 is used by a different program` | 別的程式佔用 5500（常見是 VS Code Live Server） | **不要自己砍行程**（會觸發防毒）。請使用者關掉那個程式再雙擊 🚀。佔用者若是本服務，啟動檔會直接開儀表板、不會報錯 —— 要重啟服務就請使用者先關掉舊的黑窗 |
 | `需要重新計算，因此未包含任何資料` | 建了計算表／關聯但沒重算 | `Invoke-PbiRefresh -RefreshType calculate` |
 | `410` + 「M 腳本唯讀」 | 想用 API 寫 M | 這是刻意擋的。給使用者完整 `let...in`，請他貼進進階編輯器並「關閉並套用」 |
-| PBI 顯示「查詢中有暫止的變更尚未套用」，按套用後又出現 | Desktop 的 PQ 文件與 TOM 模型失步（多半是有人繞過去寫了 M） | 只能人工解：請使用者到進階編輯器把正確的 M 貼上並「關閉並套用」 |
+| PBI 顯示「查詢中有暫止的變更尚未套用」 | M 被 API 改過（`restore` 的 mquery 範圍、`create-table` 的 `Kind=m`） | 請使用者按「套用」即可更新。套用後請他確認 M 是預期版本；不是的話再到進階編輯器貼上正確的 M 並「關閉並套用」 |
 | `Save-PbiModel` 回 `fileChanged = false` | 大檔還在寫（驗證只等 5 秒）、沒有待存變更，或按鍵沒送達 | 先隔一段時間重看檔案時間 —— 常常其實存到了。仍是舊時間就如實回報，請使用者手動 Ctrl+S。**不要連按 SendKeys** |
 | 防毒跳警報 | 做了行程終止／遞迴掃描／執行新編譯的 exe | 停下來告訴使用者你剛做了什麼、時間點，讓他對照警報。之後改走「請使用者代勞」的路線 |
 | `目前有 N 個 Power BI 實例在執行` | 多個 PBI 開著但沒選目標 | `Use-PbiInstance <檔名片段或 Port>`。**不要為了繞過而隨便挑一個** |
