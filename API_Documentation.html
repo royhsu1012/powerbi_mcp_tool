@@ -518,11 +518,12 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                 <div class="part-head"><h2><span class="n">捌</span>進階建模</h2><span class="sub">Power Query · 計算群組 · RLS</span></div>
                 <div class="api-grid">
                     <div class="api-card">
-                        <div class="badges"><span class="tag post">POST</span><span class="tag danger">已移除</span></div>
-                        <h3><s>/api/update-m</s></h3>
-                        <h4>已移除（2026-08-06）—— M 腳本唯讀</h4>
-                        <p>呼叫會回 <span class="hl">410</span>。要讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code>）。</p>
-                        <span class="note warn"><i data-icon="alert"></i><span><strong>為什麼拿掉：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。用 TOM 改 M 只動到模型那份，Desktop 那份不會跟著變，會顯示「查詢中有暫止的變更尚未套用」 —— 按「套用」可以更新，但兩邊內容不同時，API 寫進去的 M 有可能被 Desktop 那份蓋掉。<br>
+                        <div class="badges"><span class="tag post">POST</span></div>
+                        <h3>/api/update-m</h3>
+                        <h4>覆寫資料表的 M 腳本</h4>
+                        <p>2026-08-06 移除、<span class="hl">2026-09-16 恢復</span> —— 當初移除的理由（按套用也解不開）是錯的。讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code> / <code>Set-PbiMQuery</code>）。</p>
+                        <span class="code">{ "TableName": "訂單", "Expression": "let ... in ..." }</span>
+                        <span class="note warn"><i data-icon="alert"></i><span><strong>只改模型那一份：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。寫入後 Desktop 會顯示「查詢中有暫止的變更尚未套用」，<strong>要由使用者按「套用」</strong>才生效；兩份內容不同時，套用有可能以 Desktop 那份為準，所以套用後務必用 <code>Get-PbiMQuery</code> 確認留下的是這次寫入的版本。<br>
                         <strong>正確做法：</strong>把完整的 <code>let...in</code> 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。</span></span>
                     </div>
                     <div class="api-card">
@@ -590,8 +591,8 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                            <code>rename</code>、<code>upsert-relationship</code>、<code>delete-relationship</code>、
                            <code>upsert-calc-group</code>、<code>upsert-calc-item</code>、<code>delete-calc-item</code>、
                            <code>upsert-role</code>、<code>delete-role</code>、<code>upsert-expression</code>、
-                           <code>delete-expression</code>、<code>set-model-props</code></p>
-                        <span class="note"><i data-icon="info"></i><span>沒有 <code>update-m</code> —— M 腳本唯讀，用了會回 410。原因見<a href="#p8">第捌部</a>。</span></span>
+                           <code>delete-expression</code>、<code>set-model-props</code>、<code>update-m</code></p>
+                        <span class="note"><i data-icon="info"></i><span><code>update-m</code> 也可以放進批次，但寫完一樣要請使用者在 Desktop 按「套用」，並確認留下的版本（見<a href="#p8">第捌部</a>）。</span></span>
                     </div>
                 </div>
             </section>

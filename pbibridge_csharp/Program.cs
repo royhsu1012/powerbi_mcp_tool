@@ -60,6 +60,7 @@ namespace PBIBridgeCSharp {
     // 表格 / 資料行結構
     public record ColumnDef(string Name, string DataType, string SourceColumn);
     public record CreateTableRequest(string TableName, string Kind, string Expression, ColumnDef[] Columns, bool? IsHidden);
+    public record UpdateMRequest(string TableName, string Expression);
     public record TableRefRequest(string TableName);
     public record ColumnRefRequest(string TableName, string ColumnName);
     public record RenameRequest(string ObjectType, string TableName, string OldName, string NewName, bool? DryRun);
@@ -469,12 +470,33 @@ namespace PBIBridgeCSharp {
         // PBIP 還有另一條路：M 以 TMDL 檔案存在專案資料夾，可以改檔案再讓 Desktop 重載。
         // 本服務尚未實作也未驗證，要做請先在測試檔上驗證再說。
         //
-        // 目前做法：M 只讀不寫。要改 M 就把完整的 let...in 交給使用者，
-        // 由他在 Power Query 編輯器貼上並「關閉並套用」，走 Desktop 自己的路徑。
-        // 讀取請用 /api/schema 的 MQuery 欄位（Get-PbiMQuery）。
-        //
-        // 註：/api/restore 的 mquery 範圍與 /api/create-table 的 Kind=m 仍會寫入 M，
-        //     是刻意保留的；使用前請確認 Power BI Desktop 的後果。
+        // 2026-09-16 恢復寫入：使用者實測按「套用」就會更新，所以 OpUpdateM 重新開放。
+        // 呼叫端的責任：寫完要請使用者按「套用」，並確認留下的是這次寫入的版本。
+        // 讀取仍請用 /api/schema 的 MQuery 欄位（Get-PbiMQuery）。
+
+        /// <summary>
+        /// 覆寫資料表的 M 腳本（MPartitionSource.Expression）。
+        ///
+        /// ⚠️ 這只改「模型」那一份。Power BI Desktop 的 Power Query 文件是另一份，寫完 Desktop
+        /// 會顯示「查詢中有暫止的變更尚未套用」，要由使用者按「套用」。兩份內容不同時，
+        /// 套用有可能是用 Desktop 那份覆蓋回來 —— 呼叫端必須請使用者套用後確認 M 是預期版本。
+        /// </summary>
+        static string OpUpdateM(Model model, UpdateMRequest req) {
+            if (string.IsNullOrWhiteSpace(req.TableName)) throw new OpException("❌ 缺少 TableName");
+            if (string.IsNullOrWhiteSpace(req.Expression))
+                throw new OpException("❌ 缺少 Expression —— 請給完整的 let...in，不要給片段");
+
+            var t = model.Tables.Find(req.TableName)
+                    ?? throw new OpException($"找不到表格: {req.TableName}", 404);
+            var part = t.Partitions.FirstOrDefault(x => x.Source is MPartitionSource)
+                    ?? throw new OpException($"❌ 資料表 '{req.TableName}' 沒有 M 分割區（計算表／計算群組沒有 M）");
+
+            var src    = (MPartitionSource)part.Source;
+            var before = src.Expression ?? "";
+            if (before == req.Expression) return $"'{req.TableName}' 的 M 與現有內容相同，未變更";
+            src.Expression = req.Expression;
+            return $"已寫入 '{req.TableName}' 的 M（{before.Length} → {req.Expression.Length} 字元）";
+        }
 
         // ── 關聯線 ────────────────────────────────────────────────────────────
 
@@ -951,11 +973,7 @@ namespace PBIBridgeCSharp {
             "delete-measure"      => OpDeleteMeasure(model, Args<DeleteMeasureRequest>(args)),
             "move-measure"        => OpMoveMeasure(model, Args<MoveMeasureRequest>(args)),
             "add-column"          => OpAddColumn(model, Args<AddColumnRequest>(args)),
-            // "update-m" 已移除 —— M 腳本唯讀，原因見 OpUpdateM 移除處的說明
-            "update-m"            => throw new OpException(
-                "❌ update-m 已移除：目前 M 一律唯讀。用 TOM 改 M 只動到模型那份，Desktop 會顯示 " +
-                "「查詢中有暫止的變更尚未套用」；按套用可以更新，但也可能反過來用 Desktop 那份覆蓋掉。" +
-                "請把完整的 let...in 交給使用者，由他在進階編輯器貼上並「關閉並套用」。", 410),
+            "update-m"            => OpUpdateM(model, Args<UpdateMRequest>(args)),
             "upsert-relationship" => OpUpsertRelationship(model, Args<RelationshipRequest>(args)),
             "delete-relationship" => OpDeleteRelationship(model, Args<RelationshipRefRequest>(args)),
             "create-table"        => OpCreateTable(model, Args<CreateTableRequest>(args)),
@@ -2559,15 +2577,13 @@ namespace PBIBridgeCSharp {
             // 寫入（單一操作）—— 全部走 DispatchOp，與 /api/batch 共用實作
             // =====================================================================
 
-            // /api/update-m 已於 2026-08-06 移除 —— M 腳本唯讀。
-            // 保留這個端點只為了回一句看得懂的話，而不是 404 讓人以為是版本不對。
-            app.MapPost("/api/update-m", () => Results.Json(new {
-                error = "M 腳本唯讀：/api/update-m 已移除",
-                why   = "用 TOM 改 M 只動到模型，Power BI Desktop 的 Power Query 文件不會跟著變，" +
-                        "Desktop 會顯示「查詢中有暫止的變更尚未套用」；按套用可更新，但兩邊不同時 API 寫的 M 可能被蓋掉。",
-                how   = "把完整的 let...in 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。",
-                read  = "要讀 M 請用 GET /api/schema 的 MQuery 欄位（PowerShell：Get-PbiMQuery <表名>）"
-            }, statusCode: 410));
+            // M 腳本寫入。只改模型那一份，Desktop 會出現待套用提示，要由使用者按「套用」。
+            app.MapPost("/api/update-m", (UpdateMRequest req, HttpContext ctx) =>
+                RunModel(ctx, $"寫入 M 腳本 '{req.TableName}'", (m, _) => new {
+                    message = OpUpdateM(m, req),
+                    note    = "Power BI Desktop 會顯示「查詢中有暫止的變更尚未套用」。請使用者按「套用」，" +
+                              "套用後用 Get-PbiMQuery 確認留下的是這次寫入的版本 —— 兩份不同時 Desktop 那份可能覆蓋回來。"
+                }, save: true));
 
             app.MapPost("/api/upsert-measure", (UpsertMeasureRequest req, HttpContext ctx) =>
                 RunModel(ctx, $"寫入量值 '{req.TableName}'[{req.MeasureName}]", (m, _) => new { message = OpUpsertMeasure(m, req) }, save: true));

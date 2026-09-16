@@ -253,7 +253,7 @@ Power BI Desktop #1   Power BI Desktop #2   …
 | 情況 | 你要做的 |
 |---|---|
 | **① 一次性權杖**：查詢被資料保護擋下，AI 說明要看哪些欄位、幾列、為什麼 | 不同意就說「不行，用彙總就好」。同意的話，到黑窗找「若你確認要放行『這一句』查詢，把下列權杖貼給 AI」，把權杖貼給 AI。權杖只對那一句有效、10 分鐘過期、用一次就失效 |
-| **② 貼 M 腳本**：AI 目前不直接改 M（API 沒有開放寫入） | Power Query 編輯器 → 選那張查詢 → **進階編輯器** → 全選 → 貼上 AI 給的完整 `let … in` → **關閉並套用**。回覆 `OK`、`錯`＋錯誤訊息，或 `怪`＋截圖（貼之前看一眼有沒有真實資料） |
+| **② 讓 M 生效**：AI 可以直接寫 M，但只改到模型那一份 | Power BI Desktop 會顯示「查詢中有暫止的變更尚未套用」，按**套用**即可，AI 會回頭確認留下的是它寫的版本。你也可以請 AI 給完整的 `let … in`，自己貼進**進階編輯器**再「關閉並套用」。有問題就回 `錯`＋訊息，或 `怪`＋截圖（貼之前看一眼有沒有真實資料） |
 | **③ 手動存檔**：AI 回報 `fileChanged = false` | 切到 Power BI 按 Ctrl+S |
 | **④ 重開服務**：AI 改了伺服器程式或設定 | 關掉黑窗 → 告訴它 → 重新雙擊 🚀（程式有改會自動重新編譯）→ 告訴它 |
 | **⑤ 防毒警報** | 先截圖並告訴 AI，它會說明剛才做了什麼。AI 被規範不能自己讀防毒紀錄 |
@@ -349,7 +349,7 @@ Save-PbiModel                                   # 確認回傳 fileChanged = tru
 | 關聯 | `Set-PbiRelationship` / `Remove-PbiRelationship` |
 | 進階 | `New-PbiCalcGroup` / `Set-PbiCalcItem` / `Set-PbiRole` / `Set-PbiExpression` |
 | 批次 | `Invoke-PbiBatch`（一次存檔；任一步失敗整批不套用） |
-| Power Query | `Get-PbiMQuery`（唯讀）/ `Get-PbiTableProfile` / `Compare-PbiTableProfile` |
+| Power Query | `Get-PbiMQuery` / `Set-PbiMQuery` / `Get-PbiTableProfile` / `Compare-PbiTableProfile` |
 | 安全網 | `New-PbiSnapshot` / `Get-PbiSnapshots` / `Restore-PbiSnapshot` |
 | 生效 | `Invoke-PbiRefresh` / `Save-PbiModel` |
 
@@ -362,7 +362,7 @@ Save-PbiModel                                   # 確認回傳 fileChanged = tru
 | 新增／修改量值 | 不用 |
 | 建計算表、新增計算項目 | `Invoke-PbiRefresh -Table <表>` |
 | 建／改關聯、新增計算資料行 | `Invoke-PbiRefresh -RefreshType calculate` |
-| 改 M 腳本 | 不用 —— 使用者「關閉並套用」時 Power BI 會自己重整 |
+| 改 M 腳本 | 不用 —— 使用者按「套用」時 Power BI 會自己重整 |
 
 ---
 
@@ -373,7 +373,7 @@ Save-PbiModel                                   # 確認回傳 fileChanged = tru
 | DAX 量值／計算資料行／關聯／計算群組／RLS | ✅ 完整 |
 | 階層（Hierarchy） | ❌ 未實作 |
 | 檢視方塊 / KPI / 多語系 / 增量重新整理原則 | ❌ 未實作 |
-| Power Query M | 🔒 目前**唯讀**：API 不提供寫入，AI 會寫好完整 `let...in` 請你貼進進階編輯器。用 TOM 改 M 之後 Desktop 會出現「查詢中有暫止的變更尚未套用」，按**套用**即可更新 —— 套用後請確認留下的是你要的版本（模型與 Power Query 編輯器各有一份 M）。PBIP 專案的 M 以檔案形式存在專案資料夾裡（TMDL），改檔案再讓 Desktop 重載是另一條路，本工具尚未實作 |
+| Power Query M | ✅ 可讀可寫（`Set-PbiMQuery`）。寫入只改模型那一份，之後 Desktop 會顯示「查詢中有暫止的變更尚未套用」，按**套用**才生效 —— 兩份內容不同時，套用有可能以 Desktop 那份為準，所以套用後要確認留下的是預期版本。PBIP 的 TMDL 檔案路徑尚未實作 |
 | M 預覽 / 查詢摺疊分析 | 🟡 本工具尚未實作。套用後可用 `Get-PbiTableProfile` 做量化檢查（列數、空值、相異值、總和）；折疊分析目前仍要用 Power Query 的診斷工具 |
 | `/api/inject-visual` | ⚠️ 僅 PBIP，會強制關閉並重開 Power BI。**有防毒控管的公司電腦上不建議使用** |
 

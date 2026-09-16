@@ -613,17 +613,35 @@ function Set-PbiColumn {
     Invoke-PbiApi -Path "/api/set-column-props" -Method POST -Body $body
 }
 
-# Set-PbiMQuery 已於 2026-08-06 移除 —— M 腳本唯讀，不要加回來。
-#
-# 用 TOM 改 M 只會動到模型那一份，Power BI Desktop 自己的 Power Query 文件不會跟著變。
-# 兩邊一失步，Desktop 就永久顯示「查詢中有暫止的變更尚未套用」；按「套用變更」是拿
-# Desktop 那份舊 M 去跑，跑完不一致還在，橫幅又冒出來，只能請使用者手動貼一次才解得開。
-#
-# 要改 M 的正確流程：
-#   1. Get-PbiMQuery <表名> -Label <標籤>      讀出來並留備份
-#   2. 把完整的 let...in 交給使用者（不要給片段，片段會逼他自己判斷貼哪裡）
-#   3. 請他在 Power Query 編輯器 → 進階編輯器全選取代 → 關閉並套用
-#   4. Compare-PbiTableProfile 做量化驗證（列數、空值數有沒有跑掉）
+function Set-PbiMQuery {
+    <#
+      覆寫資料表的 M 腳本。2026-09-16 恢復（先前誤以為「按套用也解不開」而移除）。
+
+      ⚠️ 這只改「模型」那一份。Power BI Desktop 的 Power Query 文件是另一份 ——
+         寫完 Desktop 會顯示「查詢中有暫止的變更尚未套用」，要請使用者按「套用」。
+         兩份內容不同時，套用有可能是用 Desktop 那份覆蓋回來，所以套用後一定要
+         用 Get-PbiMQuery 確認留下的是這次寫入的版本。
+
+      建議流程：
+        $before = Get-PbiTableProfile <表名> -Columns <欄位…>   # 基準線
+        Get-PbiMQuery <表名> -Label before                      # 留一份 .pq 備份
+        Set-PbiMQuery <表名> -Expression $m                      # 寫入
+        # → 請使用者到 Power BI Desktop 按「套用」
+        Get-PbiMQuery <表名> -Show                               # 確認留下的是哪一版
+        Compare-PbiTableProfile $before (Get-PbiTableProfile <表名> -Columns <欄位…>)
+    #>
+    param(
+        [Parameter(Mandatory, Position=0)][string]$Table,
+        [Parameter(Mandatory)][string]$Expression
+    )
+    # 片段會讓整張表的 M 變成不合法 —— 一律要求完整的 let ... in
+    if ($Expression -notmatch '(?s)^\s*let.*in') {
+        throw "M 腳本看起來不是完整的 let ... in，拒絕寫入（不要送片段）。"
+    }
+    Invoke-PbiApi -Path "/api/update-m" -Method POST -Body @{
+        TableName = $Table; Expression = $Expression
+    }
+}
 
 # ---------------------------------------------------------------------------
 # 寫入：關聯線
@@ -857,10 +875,10 @@ function Invoke-PbiBatch {
                 upsert-relationship / delete-relationship / create-table / delete-table /
                 delete-column / set-column-props / rename / upsert-calc-group /
                 upsert-calc-item / delete-calc-item / upsert-role / delete-role /
-                upsert-expression / delete-expression
+                upsert-expression / delete-expression / update-m
 
-      沒有 update-m —— M 腳本唯讀，用了會回 410。要改 M 請交給使用者在
-      Power Query 編輯器貼上並「關閉並套用」，原因見 Set-PbiMQuery 移除處的說明。
+      update-m 也可以放進批次，但寫入只改模型那一份 —— 之後仍要請使用者在
+      Power BI Desktop 按「套用」，並用 Get-PbiMQuery 確認留下的是這次寫入的版本。
     #>
     param(
         [Parameter(Mandatory, Position=0)][hashtable[]]$Operations,
@@ -882,7 +900,7 @@ Write-Host "   實例  Get-PbiInstances / Use-PbiInstance / Get-PbiInfo   ← �
 Write-Host "   檢查  Test-PbiBridge / Test-PbiModel" -ForegroundColor Gray
 Write-Host "   讀取  Get-PbiSchema / Get-PbiRelationships / Get-PbiMeasures / Get-PbiRoles / Get-PbiExpressions" -ForegroundColor Gray
 Write-Host "   查詢  Invoke-Dax / Invoke-PbiDmv / Get-PbiModelStats" -ForegroundColor Gray
-Write-Host "   PQ    Get-PbiMQuery / Get-PbiTableProfile / Compare-PbiTableProfile   ← M 唯讀，不能寫" -ForegroundColor Gray
+Write-Host "   PQ    Get-PbiMQuery / Set-PbiMQuery / Get-PbiTableProfile / Compare-PbiTableProfile" -ForegroundColor Gray
 Write-Host "   安全  New-PbiSnapshot / Get-PbiSnapshots / Restore-PbiSnapshot" -ForegroundColor Gray
 Write-Host "   生效  Save-PbiModel / Invoke-PbiRefresh" -ForegroundColor Gray
 Write-Host "   量值  Set-PbiMeasure / Remove-PbiMeasure / Move-PbiMeasure" -ForegroundColor Gray

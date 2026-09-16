@@ -384,6 +384,7 @@ Headers: `X-API-Key: <key>`　＋　`X-PBI-Target: <Port 或檔名片段>`（多
 | `/api/delete-column` | POST | 刪除資料行（仍被關聯使用時會擋下） |
 | `/api/set-column-props` | POST | 格式、DisplayFolder、隱藏、SortByColumn、SummarizeBy、資料類別 |
 | `/api/create-table` | POST | 建表：`calculated`（DAX）／`m`（M，需給 Columns）／`measureHolder` |
+| `/api/update-m` | POST | **覆寫資料表的 M 腳本**。只改模型那一份，寫完要請使用者在 Desktop 按「套用」並確認版本 |
 | `/api/delete-table` | POST | 刪表（仍有關聯線時會擋下） |
 | `/api/rename` | POST | **改名並同步改寫所有 DAX 引用**，支援 `DryRun` |
 | `/api/upsert-relationship` | POST | 建立／更新關聯（基數、篩選方向、是否啟用） |
@@ -445,7 +446,7 @@ Headers: `X-API-Key: <key>`　＋　`X-PBI-Target: <Port 或檔名片段>`（多
 | 新增計算項目到計算群組 | `Invoke-PbiRefresh -Table <計算群組>` | 秒級 |
 | 新增計算資料行 | `Invoke-PbiRefresh -RefreshType calculate` | 秒級 |
 
-M 腳本不在這張表裡 —— 它是唯讀的，由使用者在 Power Query 編輯器貼上並「關閉並套用」，
+M 腳本不在這張表裡 —— 寫入（或使用者自己貼）之後由他按「套用」，
 Power BI 會自己重整（見下方「Power Query M 的開發互動模式」）。
 
 `calculate` 只重算 DAX、不重抓資料源，很便宜 —— 結構性變更後直接跑一次就好。
@@ -500,10 +501,10 @@ Set-PbiMeasure -Table "量值" -Name "銷售總額" -Expression "SUM(FactSales[A
 | 決定 | 這個轉換對不對 | — |
 | 寫 | — | 全部的 M |
 
-### 目前規則：M 腳本唯讀，API 不寫入，一律交給使用者貼
+### M 可以寫入，但「套用」那一步一定要經過使用者
 
-`/api/update-m` 與 `Set-PbiMQuery` 已於 **2026-08-06 移除**，用了會回 **410**。
-**不要想辦法繞過**（不要改用 `/api/batch`、不要用 `/api/create-table` 重建同名表）。
+`/api/update-m` 與 `Set-PbiMQuery` 曾於 2026-08-06 移除，**2026-09-16 恢復** —— 當初移除的理由
+（「按套用也解不開」）是錯的。恢復後仍有一條硬規則：**套用要由使用者按，不要自己想辦法繞過**。
 
 **Power BI Desktop 的 Power Query 文件與 TOM 模型是兩份獨立的東西。**
 用 TOM 改 M 只動到模型那份，Desktop 自己那份不會跟著變，於是 Desktop 會顯示
@@ -516,12 +517,18 @@ Set-PbiMeasure -Table "量值" -Name "銷售總額" -Expression "SUM(FactSales[A
 PBIP 格式還有另一條路：M 以檔案形式存在專案資料夾（TMDL），改檔案再讓 Desktop 重載 ——
 **本工具尚未實作也未驗證**，不要自己臨時發明做法。
 
-所以 M 一律是：**AI 讀 + AI 寫碼 + 使用者貼**。
+所以 M 的流程是：**AI 讀 → AI 寫碼 → AI 寫入 → 使用者按套用 → AI 確認留下哪一版**。
 
 ```powershell
-Get-PbiMQuery <表名> -Label <標籤>   # ✅ 讀，並留一份 .pq 備份
-# ❌ 沒有寫入的指令。給使用者完整的 let...in，請他貼進進階編輯器並「關閉並套用」。
+$before = Get-PbiTableProfile <表名> -Columns <欄位…>   # 基準線
+Get-PbiMQuery <表名> -Label before                      # 留一份 .pq 備份
+Set-PbiMQuery <表名> -Expression $m                      # 寫入模型那一份
+# → 停下來請使用者到 Power BI Desktop 按「套用」
+Get-PbiMQuery <表名> -Show                               # 確認留下的是這次寫的版本
 ```
+
+**寫入不等於完成。** 沒按套用，Desktop 那份還是舊的；按了套用也要確認留下的是哪一版。
+使用者偏好自己貼也可以 —— 給他完整的 `let...in`，那條路一樣有效。
 
 貼完由 **Power BI 自己**跑重整（「關閉並套用」就會跑），不需要 `Invoke-PbiRefresh`。
 之後用 `Compare-PbiTableProfile` 做量化驗證。
@@ -729,7 +736,7 @@ Copy-Item .\pbibridge_csharp\appsettings.json .\pbibridge_csharp\bin\Release\net
 | `MSB3027 檔案鎖定者` | 服務還在跑，DLL 鎖住 | **編譯是過的**，只差複製。請使用者關掉主控台視窗，再重跑 `dotnet build` |
 | `address already in use` / 啟動檔說 `Port 5500 is used by a different program` | 別的程式佔用 5500（常見是 VS Code Live Server） | **不要自己砍行程**（會觸發防毒）。請使用者關掉那個程式再雙擊 🚀。佔用者若是本服務，啟動檔會直接開儀表板、不會報錯 —— 要重啟服務就請使用者先關掉舊的黑窗 |
 | `需要重新計算，因此未包含任何資料` | 建了計算表／關聯但沒重算 | `Invoke-PbiRefresh -RefreshType calculate` |
-| `410` + 「M 腳本唯讀」 | 想用 API 寫 M | 這是刻意擋的。給使用者完整 `let...in`，請他貼進進階編輯器並「關閉並套用」 |
+| `410` + 「M 腳本唯讀」 | 執行中的是 2026-09-16 之前的舊版建置 | `update-m` 已恢復。請使用者關掉黑窗、重新雙擊 🚀 重新編譯 |
 | PBI 顯示「查詢中有暫止的變更尚未套用」 | M 被 API 改過（`restore` 的 mquery 範圍、`create-table` 的 `Kind=m`） | 請使用者按「套用」即可更新。套用後請他確認 M 是預期版本；不是的話再到進階編輯器貼上正確的 M 並「關閉並套用」 |
 | `Save-PbiModel` 回 `fileChanged = false` | 大檔還在寫（驗證只等 5 秒）、沒有待存變更，或按鍵沒送達 | 先隔一段時間重看檔案時間 —— 常常其實存到了。仍是舊時間就如實回報，請使用者手動 Ctrl+S。**不要連按 SendKeys** |
 | 防毒跳警報 | 做了行程終止／遞迴掃描／執行新編譯的 exe | 停下來告訴使用者你剛做了什麼、時間點，讓他對照警報。之後改走「請使用者代勞」的路線 |
