@@ -635,7 +635,7 @@ function Set-PbiMQuery {
         [Parameter(Mandatory)][string]$Expression
     )
     # 片段會讓整張表的 M 變成不合法 —— 一律要求完整的 let ... in
-    if ($Expression -notmatch '(?s)^\s*let.*in') {
+    if ($Expression -notmatch '(?s)^\s*let\b.*\bin\b') {
         throw "M 腳本看起來不是完整的 let ... in，拒絕寫入（不要送片段）。"
     }
     Invoke-PbiApi -Path "/api/update-m" -Method POST -Body @{
