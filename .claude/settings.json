@@ -1,4 +1,10 @@
 {
+  "permissions": {
+    "deny": [
+      "Read(~/AppData/Local/PBI_AI_Bridge/**)",
+      "Edit(~/AppData/Local/PBI_AI_Bridge/**)"
+    ]
+  },
   "hooks": {
     "PreToolUse": [
       {

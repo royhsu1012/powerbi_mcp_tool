@@ -198,7 +198,7 @@
             <a href="#p7"><span class="n">柒</span>關聯線</a>
             <a href="#p8"><span class="n">捌</span>進階建模</a>
             <a href="#p9"><span class="n">玖</span>批次</a>
-            <a href="#p10"><span class="n">拾</span>視覺層注入</a>
+            <a href="#p10"><span class="n">拾</span>資料保護</a>
         </nav>
 
         <main class="content">
@@ -206,7 +206,7 @@
                 <h1>API 文件</h1>
                 <p>AI 代理與 PowerShell 透過這些端點讀寫執行中的 Power BI Desktop 模型。</p>
                 <div class="facts">
-                    <span class="fact"><i data-icon="list"></i>38 個 API 端點</span>
+                    <span class="fact"><i data-icon="list"></i>39 個 API 端點</span>
                     <span class="fact"><i data-icon="window"></i>支援同時操作多個 Power BI</span>
                     <span class="fact"><i data-icon="key"></i>所有 <code>/api/*</code> 需 <code>X-API-Key</code></span>
                     <span class="fact"><i data-icon="shield"></i>只接受 localhost:5500 連線</span>
@@ -226,13 +226,15 @@
                 </ul>
                 <p>HTTP 標頭只能放 ASCII，中文檔名不能直接當標頭值 —— <code>Use-PbiInstance</code> 內部一律換算成 Port 再送出，
                    並記住完整路徑，PBI 關掉重開（Port 會變）時自動重新解析。</p>
+                <p>回應的欄位名稱一律是 <strong>camelCase</strong>（<code>rows</code>、<code>truncated</code>、<code>elapsedMs</code>…）；請求的參數名稱不分大小寫。</p>
             </div>
 
             <div class="callout">
                 <h2><i data-icon="alert"></i>開始之前，兩件必須知道的事</h2>
                 <p><strong>1. 寫入只進記憶體，不會自動存檔。</strong>
                    TOM 的 <code>SaveChanges()</code> 只改 Power BI Desktop 記憶體中的模型。要落到 <code>.pbix</code>／<code>.pbip</code>
-                   必須呼叫 <code>/api/save</code>，並確認回傳的 <code>fileChanged</code> 為 <code>true</code>。</p>
+                   必須呼叫 <code>/api/save</code>。<code>fileChanged</code> 只代表「有檔案被寫了」；PBIP 請帶 <code>Expect</code>，
+                   確認 <code>expectFound</code> 為 <code>true</code> 才算剛寫的內容真的進了磁碟。</p>
                 <p><strong>2. 結構性變更後必須重算，否則查不到資料。</strong>
                    只寫量值不用重算；但建立計算表、關聯線、計算項目之後，不跑 <code>/api/refresh</code>
                    查詢就會回「需要重新計算，因此未包含任何資料」。</p>
@@ -242,6 +244,8 @@
                         <tr><td>建立計算表／計算項目</td><td><code>refresh</code>（指定該表）</td><td>秒級</td></tr>
                         <tr><td>建立或修改關聯線／計算資料行</td><td><code>refresh</code> + <code>RefreshType: "calculate"</code></td><td>秒級</td></tr>
                         <tr><td>M 腳本（使用者在 Power Query 編輯器「關閉並套用」）</td><td>不用 —— Power BI 會自己重整</td><td>—</td></tr>
+                        <tr><td>M 腳本（用 <code>/api/update-m</code> 寫入，Desktop 沒有出現套用提示）</td><td><code>refresh</code>（指定該表，<code>full</code>）</td><td>看資料源</td></tr>
+                        <tr><td>M 多輸出了新欄位</td><td>先 <code>add-column</code>（給 <code>SourceColumn</code>），再 <code>refresh</code> 該表</td><td>看資料源</td></tr>
                     </table>
                 </div>
             </div>
@@ -254,7 +258,8 @@
                         <div class="badges"><span class="tag get">GET</span><span class="tag">免 Key</span><span class="tag">給人用</span></div>
                         <h3>/</h3>
                         <h4>網頁儀表板</h4>
-                        <p>瀏覽資料表、欄位、DAX 量值與 M 腳本。頁面由服務提供，<span class="hl">伺服器會把金鑰帶進頁面</span>，使用者不需要輸入。</p>
+                        <p>兩個檢視：「模型結構」瀏覽資料表、欄位、DAX 量值與 M 腳本；「資料保護」讓使用者逐欄設定 AI 能讀什麼（見<a href="#p10">第拾部</a>）。頁面由服務提供，<span class="hl">伺服器會把金鑰帶進頁面</span>，使用者不需要輸入。</p>
+                        <span class="note"><i data-icon="key"></i><span>金鑰由服務在第一次啟動時產生，存在這台電腦的 <code>%LOCALAPPDATA%\PBI_AI_Bridge\api-key.txt</code> —— 不在工具資料夾裡，也不會印在主控台。<code>tools\PBI-Bridge.ps1</code> 會自己讀；自己寫用戶端時從那個檔案取值，放進 <code>X-API-Key</code> 標頭。</span></span>
                         <span class="note warn"><i data-icon="shield"></i><span>所有請求只接受 Host 為 <code>localhost</code>／<code>127.0.0.1</code>（擋 DNS rebinding），CORS 也不允許 <code>null</code> 來源 —— 其他網站拿不到這個頁面裡的金鑰。</span></span>
                     </div>
                     <div class="api-card">
@@ -280,7 +285,8 @@
                         <div class="badges"><span class="tag get">GET</span><span class="tag">切換檔案的第一站</span></div>
                         <h3>/api/instances</h3>
                         <h4>列出所有執行中的 Power BI</h4>
-                        <p>每個實例回傳 <code>Port</code>、<code>PbiPid</code>、<code>MsmdsrvPid</code>、<code>FilePath</code>、<code>FileName</code>、<code>WindowTitle</code>、<code>Kind</code>（PBIX／PBIP／Unknown）。</p>
+                        <p>每個實例回傳 <code>port</code>、<code>pbiPid</code>、<code>msmdsrvPid</code>、<code>filePath</code>、<code>fileName</code>、<code>windowTitle</code>、<code>kind</code>（PBIX／PBIP／Unknown）。</p>
+                        <span class="note"><i data-icon="info"></i><span>檔案路徑只能從 Power BI 的啟動參數得知。先開 Power BI 再從裡面選檔案時拿不到路徑：<code>kind</code> 是 <code>Unknown</code>、<code>filePath</code> 是空的，<code>fileName</code> 改用視窗標題。這時讀寫模型與資料保護照常，但 <code>/api/save</code>、<code>/api/validate-report</code> 不能用，快照資料夾以 Port 命名（重開就找不回來）。用雙擊檔案的方式開啟就沒有這些限制。</span></span>
                         <p>這是唯一<span class="hl">不需要指定目標</span>的實例相關端點 —— 你得先看到清單才能選。</p>
                         <span class="code">PowerShell：Get-PbiInstances / Use-PbiInstance &lt;片段或 Port&gt;</span>
                     </div>
@@ -296,7 +302,14 @@
                         <h3>/api/validate</h3>
                         <h4>模型健檢</h4>
                         <p>引擎回報的壞掉公式、雙向／多對多關聯、停用關聯、跨表重複的量值名稱、沒有格式字串的量值、孤島表、自動日期表數量、疑似沒人用的欄位、用了彙總函式的計算資料行。</p>
-                        <span class="note"><i data-icon="info"></i><span>只有 <code>BrokenObjects</code> 是「確定壞掉」（引擎回報），其餘皆為建議。<code>PossiblyUnusedColumns</code> 只比對 DAX 文字，未涵蓋報表視覺，刪除前務必人工確認。</span></span>
+                        <span class="note"><i data-icon="info"></i><span>只有 <code>brokenObjects</code> 是「確定壞掉」（引擎回報），其餘皆為建議。<code>possiblyUnusedColumns</code> 只比對 DAX 文字，未涵蓋報表視覺，刪除前務必人工確認。</span></span>
+                    </div>
+                    <div class="api-card">
+                        <div class="badges"><span class="tag get">GET</span></div>
+                        <h3>/api/validate-report</h3>
+                        <h4>報表健檢（僅 PBIP）</h4>
+                        <p>檢查報表資料夾裡的檔案：JSON 能否解析、引用的欄位與量值在模型裡存不存在、頁面清單是否對得上、視覺是否<span class="hl">超出頁面或互相重疊</span>、互動設定與格式設定有沒有指向不存在的對象。直接改過 <code>visual.json</code> 之後、請使用者接受變更之前先跑一次。</p>
+                        <span class="note"><i data-icon="info"></i><span><code>Errors</code> 會讓視覺壞掉或空白；<code>Warnings</code> 是值得看一眼的版面與設定問題。只回傳結構（頁面、視覺類型與標題、欄位名稱、座標），<strong>不回傳篩選條件裡的值</strong>。文字有沒有被擠壓、配色好不好看查不到 —— 那要看畫面。</span></span>
                     </div>
                     <div class="api-card">
                         <div class="badges"><span class="tag get">GET</span></div>
@@ -333,23 +346,25 @@
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/query</h3>
                         <h4>唯讀 DAX 查詢</h4>
-                        <p>查詢<span class="hl">必須以 EVALUATE 或 DEFINE 開頭</span>（唯讀防護，擋掉會變更模型的 XMLA 命令）。回傳欄位清單、列數、是否截斷，以及 <code>ElapsedMs</code>。</p>
+                        <p>查詢<span class="hl">必須以 EVALUATE 或 DEFINE 開頭</span>（唯讀防護，擋掉會變更模型的 XMLA 命令）。回傳欄位清單、列數、是否截斷，以及 <code>elapsedMs</code>。</p>
                         <p>回傳列數由伺服器封頂：逐列明細 <strong>50</strong> 列、彙總結果 <strong>300</strong> 列，<code>MaxRows</code> 只能調低。
-                           <code>Truncated: true</code> 代表還有資料沒帶回來，要總數請用 <code>COUNTROWS</code>。</p>
-                        <p>DAX 語法錯誤回 <strong>400</strong>，body 含引擎原始訊息與錯誤位置，可直接據此修正公式。</p>
+                           <code>truncated: true</code> 代表還有資料沒帶回來，要總數請用 <code>COUNTROWS</code>。</p>
+                        <p>DAX 語法錯誤回 <strong>400</strong>，body 含引擎的訊息與錯誤位置，可直接據此修正公式。查詢碰到受限欄位時，訊息裡引用的資料內容會換成 <code>‹已遮蔽›</code>。</p>
                         <span class="code">{ "Query": "EVALUATE ...", "MaxRows": 50,
-  "TimeoutSeconds": 60, "Pseudonymize": false }</span>
-                        <span class="note warn"><i data-icon="shield"></i><span><strong>資料保護（伺服器端強制）</strong>：客戶身分欄位只准出現在計數類函式內（<code>DISTINCTCOUNT</code>／<code>COUNTROWS</code>…），金額欄位必須包在聚合函式內，違者回 <strong>403</strong>。管制清單見 <code>appsettings.json</code> 的 <code>DataProtection</code>。被擋下時服務主控台會印出一次性權杖，經使用者確認後以 <code>X-PBI-Allow-Detail</code> 標頭放行「同一句」查詢（10 分鐘、限用一次）。<code>Pseudonymize: true</code> 讓身分欄位可以當分組鍵，值換成穩定代號 <code>ID_xxxxxx</code>。</span></span>
+  "TimeoutSeconds": 60, "AskUser": false }</span>
+                        <span class="note warn"><i data-icon="shield"></i><span><strong>資料保護（伺服器端強制）</strong>：每個欄位有一個等級（見<a href="#p10">第拾部</a>）。<strong>只能計數</strong>的欄位只准出現在計數類函式內（<code>DISTINCTCOUNT</code>／<code>COUNTROWS</code>…）；<strong>只能彙總</strong>的欄位必須包在聚合函式內，或寫在篩選條件裡；<strong>換成代號</strong>的欄位可以當分組鍵，回傳的值是穩定代號 <code>ID_3FA2B81C07</code>（回應的 <code>pseudonymized</code> 會列出是哪些欄位）。量值、計算資料行、計算表與計算群組的定義會展開一起檢查。違者回 <strong>403</strong>。</span></span>
+                        <span class="note"><i data-icon="info"></i><span><code>AskUser: true</code>：這句查詢被擋下時，在使用者的螢幕跳確認視窗，由他決定要不要放行這一次（最多 <code>MaxRows</code> 列，沒給就是逐列明細的上限，封頂 1000）。放行後的回應 <code>approvedByUser</code> 為 <code>true</code>、內容沒有經過遮蔽（每格最多 200 個字，超過會截斷）。沒被擋的查詢不會跳視窗。</span></span>
+                        <span class="note"><i data-icon="info"></i><span>被擋下的 <strong>403</strong> 回應有 <code>reason</code>（為什麼）、<code>hint</code>（怎麼改寫）、<code>verdict</code>（判定代碼）與 <code>canAskUser</code>。<code>canAskUser: false</code> 的情況不會跳視窗：寫法本身被禁（<code>BLOCKED-FUNC</code>）、模型定義讀不完整（<code>BLOCKED-LOAD</code>／<code>BLOCKED-INCOMPLETE</code>）、保護設定檔讀不出來（<code>BLOCKED-SETTINGS</code>），或查詢碰到超過 12 個受限欄位、去掉註解後超過 700 個字（視窗列不完）。使用者同意的是視窗裡那一句連同當時的量值定義 —— 按「是」之後定義有變會回 <code>BLOCKED-CHANGED</code>。</span></span>
                     </div>
                     <div class="api-card">
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/dmv</h3>
                         <h4>系統檢視查詢</h4>
-                        <p>執行 <code>$SYSTEM</code> DMV，用於效能分析與相依性追蹤。這些檢視只含中繼資料與統計，<span class="hl">不會回傳事實資料列</span>。</p>
-                        <p>格式必須是 <code>SELECT ... FROM $SYSTEM.&lt;檢視&gt;</code>，白名單以外一律拒絕。</p>
+                        <p>執行 <code>$SYSTEM</code> DMV，用於查中繼資料、儲存統計與記憶體佔用。這些檢視只含中繼資料與統計，<span class="hl">不會回傳事實資料列</span>。</p>
+                        <p>格式必須是<strong>單一來源</strong>的 <code>SELECT &lt;欄位或 *&gt; FROM $SYSTEM.&lt;檢視&gt; [WHERE … | ORDER BY …]</code>：開頭的註解、第二個 <code>$SYSTEM</code> 或第二個 <code>FROM</code>（子查詢、JOIN）都會被拒絕。</p>
                         <span class="code">SELECT DIMENSION_NAME, COLUMN_ID, USED_SIZE
 FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
-                        <span class="note warn"><i data-icon="shield"></i><span><code>$SYSTEM.TMSCHEMA_PARTITIONS</code> 會回傳 M 腳本（含連線字串），非必要不要查它。</span></span>
+                        <span class="note warn"><i data-icon="shield"></i><span>資料保護啟用時是<strong>白名單制</strong>：只開放模型的中繼資料與儲存統計（<code>TMSCHEMA_TABLES</code>／<code>COLUMNS</code>／<code>MEASURES</code>／<code>RELATIONSHIPS</code>…、<code>DISCOVER_STORAGE_*</code>、<code>DISCOVER_OBJECT_MEMORY_USAGE</code>）。其他檢視回 <strong>403</strong> —— 有些會回傳欄位的每一個相異值（<code>MDSCHEMA_MEMBERS</code>）、M 腳本（<code>TMSCHEMA_PARTITIONS</code>）或別的連線跑過的查詢文字。回應的 <code>allowed</code> 會列出可以查的。相依性檢視（<code>DISCOVER_CALC_DEPENDENCY</code>）不在名單內，要查量值之間的引用請讀 <code>/api/schema</code> 的定義。</span></span>
                     </div>
                 </div>
             </section>
@@ -372,8 +387,8 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <h3>/api/restore</h3>
                         <h4>從快照還原</h4>
                         <p>還原量值、計算資料行、關聯線、M 腳本、共用運算式。支援 <code>DryRun</code> 先看差異清單。</p>
-                        <span class="note danger"><i data-icon="alert"></i><span><strong>還原不是合併，是回到當時的狀態</strong> —— 快照中不存在的量值與關聯<u>會被刪掉</u>。另外它<u>不會刪除表格與角色</u>，也不改模型層級屬性；沒被涵蓋的項目會列在回應的 <code>Uncovered</code> 裡，別忽略。</span></span>
-                        <span class="note warn"><i data-icon="alert"></i><span><strong>預設範圍包含 M 腳本</strong>。還原 M 之後 Desktop 會出現待套用提示（見<a href="#p8">第捌部</a>）—— 只想還原量值請明確給 <code>Scope: ["measures"]</code>。</span></span>
+                        <span class="note danger"><i data-icon="alert"></i><span><strong>還原不是合併，是回到當時的狀態</strong> —— 快照中不存在的量值與關聯<u>會被刪掉</u>。另外它<u>不會刪除表格與角色</u>，也不改模型層級屬性；沒被涵蓋的項目會列在回應的 <code>uncovered</code> 裡，別忽略。</span></span>
+                        <span class="note warn"><i data-icon="alert"></i><span><strong>預設範圍包含 M 腳本</strong>。還原 M 和直接寫 M 一樣：資料保護啟用時會先跳<a href="#p10">確認視窗</a>，寫入後還要讓它生效並確認留下的版本（見<a href="#p8">第捌部</a>）—— 只想還原量值請明確給 <code>Scope: ["measures"]</code>。</span></span>
                         <span class="note"><i data-icon="shield"></i><span>只在<strong>目標模型自己的</strong>快照資料夾裡找檔案，路徑分隔字元一律拒絕 —— 結構上就不可能把 A 模型的快照還原到 B 模型。</span></span>
                         <span class="code">{ "File": "20260805_121110__before.json",
   "DryRun": true, "Scope": ["measures"] }</span>
@@ -393,14 +408,18 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                            <code>full</code>／<code>calculate</code>／<code>dataOnly</code>／<code>automatic</code>／<code>add</code>／<code>clearValues</code>／<code>defragment</code>。</p>
                         <p><code>calculate</code> 只重算 DAX、不重抓資料源，很便宜 —— 結構性變更後直接跑一次就好。</p>
                         <span class="code">{ "TableName": "銷售", "RefreshType": "calculate" }</span>
+                        <span class="note"><i data-icon="info"></i><span><strong>跑完才回應</strong>：<code>message</code> 是「已完成」，<code>elapsedMs</code> 是實際耗時 —— 收到回應就可以直接驗算。失敗會是錯誤回應。</span></span>
                     </div>
                     <div class="api-card">
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/save</h3>
-                        <h4>模擬 Ctrl+S 存檔</h4>
-                        <p>把<span class="hl">目標那一個</span> PBI Desktop 帶到前景送出 Ctrl+S，再比對檔案修改時間驗證是否真的存到。</p>
-                        <p>驗證對象是該實例自己的檔案；<code>.pbix</code> 直接看單一檔案時間，<code>.pbip</code> 則掃整個專案資料夾（存檔會散落在 <code>.Report</code>／<code>.SemanticModel</code>）。</p>
-                        <span class="note warn"><i data-icon="alert"></i><span>一定要看回傳的 <code>fileChanged</code>。<code>false</code> 代表沒存到（或本來就沒有待存變更），不要當成成功，也<strong>不要連續重送</strong>（跨行程送按鍵連按會被防毒視為可疑）。會短暫搶走鍵盤焦點 —— 這是 SendKeys 的固有限制。</span></span>
+                        <h4>模擬 Ctrl+S 存檔並驗證</h4>
+                        <p>把<span class="hl">目標那一個</span> PBI Desktop 帶到前景送出 Ctrl+S，然後輪詢到檔案寫完為止（<code>WaitSeconds</code> 是上限，預設 30；寫完就提早回應）。</p>
+                        <p>驗證範圍只有該實例自己的檔案：<code>.pbix</code> 看那一個檔；<code>.pbip</code> 看它的 <code>.Report</code> 與 <code>.SemanticModel</code> 兩個資料夾（照 <code>.pbip</code> 與 <code>definition.pbir</code> 裡的指標找）。旁邊不相干的檔案被寫入不會被當成存檔成功。</p>
+                        <span class="code">{ "WaitSeconds": 30, "Expect": ["銷售總額"] }
+{ "VerifyOnly": true, "Expect": ["銷售總額"] }   // 不送按鍵，只看磁碟</span>
+                        <p>回應：<code>fileChanged</code>（有沒有檔案被寫）、<code>changedFiles</code>（哪些檔）、<code>expectFound</code>（<code>Expect</code> 指定的文字在不在磁碟上，僅 PBIP）。</p>
+                        <span class="note warn"><i data-icon="alert"></i><span><code>fileChanged = true</code> <strong>不是</strong>「存到了」的證據 —— 遇過檔案有寫、但剛改的內容不在裡面。PBIP 請帶 <code>Expect</code> 看 <code>expectFound</code>。沒存到時<strong>最多重試一次</strong>，不要連續重送（跨行程送按鍵連按會被防毒視為可疑）；要確認就用 <code>VerifyOnly</code>。會短暫搶走鍵盤焦點 —— 這是 SendKeys 的固有限制。</span></span>
                     </div>
                 </div>
             </section>
@@ -433,9 +452,11 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                     <div class="api-card">
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/add-column</h3>
-                        <h4>新增計算資料行</h4>
-                        <p>用 DAX 新增計算資料行。<code>DataType</code> 可用 text／int／decimal／currency／bool／date。同名計算資料行會被覆寫。</p>
-                        <span class="note"><i data-icon="info"></i><span>新增後需要 <code>refresh</code>（calculate）才會有值。</span></span>
+                        <h4>新增資料行</h4>
+                        <p>給 <code>Expression</code>：用 DAX 新增<span class="hl">計算資料行</span>，同名計算資料行會被覆寫。給 <code>SourceColumn</code>：新增對應 M 輸出欄位的<span class="hl">來源資料行</span> —— 用 <code>/api/update-m</code> 讓查詢多輸出一欄時，模型不會自己長出那個資料行。兩者擇一。<code>DataType</code> 可用 text／int／decimal／currency／bool／date。</p>
+                        <span class="code">{ "TableName": "訂單", "ColumnName": "region",
+  "SourceColumn": "region", "DataType": "text" }</span>
+                        <span class="note"><i data-icon="info"></i><span>計算資料行新增後需要 <code>refresh</code>（calculate）才會有值；來源資料行要對該表 <code>refresh</code>（full）。</span></span>
                     </div>
                     <div class="api-card destructive">
                         <div class="badges"><span class="tag post">POST</span><span class="tag danger">不可復原</span></div>
@@ -468,7 +489,7 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <span class="code">{ "TableName": "指標", "Kind": "calculated",
   "Expression": "DATATABLE(\"k\", STRING, {{\"a\"}})" }</span>
                         <span class="note"><i data-icon="info"></i><span>建立後需要 <code>refresh</code> 該表，否則查詢會回「未包含任何資料」。</span></span>
-                        <span class="note warn"><i data-icon="alert"></i><span><code>Kind: "m"</code> 同樣是用 API 寫 M，之後 Desktop 會出現待套用提示，套用時要確認留下的是預期的版本。</span></span>
+                        <span class="note warn"><i data-icon="alert"></i><span><code>Kind: "m"</code> 同樣是用 API 寫 M：資料保護啟用時會先跳<a href="#p10">確認視窗</a>；寫入後 Desktop 可能出現待套用提示、也可能沒有（見<a href="#p8">第捌部</a>），生效後要確認留下的是預期的版本。</span></span>
                     </div>
                     <div class="api-card destructive">
                         <div class="badges"><span class="tag post">POST</span><span class="tag danger">不可復原</span></div>
@@ -481,7 +502,8 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <h3>/api/rename</h3>
                         <h4>改名 + 同步改寫 DAX 引用</h4>
                         <p>支援 <code>measure</code>／<code>column</code>／<code>table</code>。TOM 本身<strong>不會</strong>更新引用，這個端點會掃過全模型的量值、計算資料行、計算表、計算項目與 RLS 篩選式，把引用一起改掉。</p>
-                        <p>回傳完整的 <code>Rewrites</code> 清單（每一筆的 Before／After）。</p>
+                        <p>回傳完整的 <code>rewrites</code> 清單（每一筆的 before／after）。</p>
+                        <span class="note"><i data-icon="shield"></i><span>改資料表或資料行的名稱時，受限欄位會<strong>維持原本的等級</strong>：通用規則是看欄名的，改名之後樣式對不上的欄位，服務會自動補一筆逐欄設定（補了幾筆印在主控台）。</span></span>
                         <span class="note warn"><i data-icon="alert"></i><span><strong>一律先用 <code>DryRun: true</code></strong> 檢視改寫清單，確認沒有誤改再實際執行。</span></span>
                         <span class="code">{ "ObjectType": "measure", "TableName": "量值",
   "OldName": "銷售額", "NewName": "銷售總額", "DryRun": true }</span>
@@ -521,16 +543,18 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/update-m</h3>
                         <h4>覆寫資料表的 M 腳本</h4>
-                        <p>2026-08-06 移除、<span class="hl">2026-09-16 恢復</span> —— 當初移除的理由（按套用也解不開）是錯的。讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code> / <code>Set-PbiMQuery</code>）。</p>
+                        <p>讀 M 請用 <code>GET /api/schema</code> 的 <code>MQuery</code> 欄位（PowerShell：<code>Get-PbiMQuery</code> / <code>Set-PbiMQuery</code>）。</p>
+                        <span class="note warn"><i data-icon="shield"></i><span>資料保護啟用時，這個請求會先在使用者的螢幕跳<a href="#p10">確認視窗</a>，他按「是」才執行。</span></span>
                         <span class="code">{ "TableName": "訂單", "Expression": "let ... in ..." }</span>
-                        <span class="note warn"><i data-icon="alert"></i><span><strong>只改模型那一份：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。寫入後 Desktop 會顯示「查詢中有暫止的變更尚未套用」，<strong>要由使用者按「套用」</strong>才生效；兩份內容不同時，套用有可能以 Desktop 那份為準，所以套用後務必用 <code>Get-PbiMQuery</code> 確認留下的是這次寫入的版本。<br>
-                        <strong>正確做法：</strong>把完整的 <code>let...in</code> 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。</span></span>
+                        <span class="note warn"><i data-icon="alert"></i><span><strong>只改模型那一份，而且寫入本身不會重抓資料：</strong>Power BI Desktop 的 Power Query 文件與 TOM 模型是<u>兩份獨立的東西</u>。寫入後 Desktop 的反應有兩種，兩種都遇過 —— 顯示「查詢中有暫止的變更尚未套用」（<strong>由使用者按「套用」</strong>），或完全沒有提示（對該表跑 <code>/api/refresh</code>，新的 M 才會套用到資料上）。兩份內容不同時，套用有可能以 Desktop 那份為準，所以生效後務必確認留下的是這次寫入的版本。<br>
+                        <strong>另一條路：</strong>把完整的 <code>let...in</code> 交給使用者，請他在 Power Query 編輯器的進階編輯器貼上，再「關閉並套用」。</span></span>
                     </div>
                     <div class="api-card">
                         <div class="badges"><span class="tag post">POST</span></div>
                         <h3>/api/upsert-expression<br>/api/delete-expression</h3>
                         <h4>M 參數與共用函式</h4>
                         <p>建立、更新或刪除模型層級的 Power Query 共用運算式。</p>
+                        <span class="note warn"><i data-icon="shield"></i><span>資料保護啟用時，<code>upsert-expression</code> 會先跳<a href="#p10">確認視窗</a>。寫完之後要對<strong>用到它的資料表</strong>重新整理才會生效。</span></span>
                     </div>
                     <div class="api-card">
                         <div class="badges"><span class="tag post">POST</span></div>
@@ -592,35 +616,59 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
                            <code>upsert-calc-group</code>、<code>upsert-calc-item</code>、<code>delete-calc-item</code>、
                            <code>upsert-role</code>、<code>delete-role</code>、<code>upsert-expression</code>、
                            <code>delete-expression</code>、<code>set-model-props</code>、<code>update-m</code></p>
-                        <span class="note"><i data-icon="info"></i><span><code>update-m</code> 也可以放進批次，但寫完一樣要請使用者在 Desktop 按「套用」，並確認留下的版本（見<a href="#p8">第捌部</a>）。</span></span>
+                        <span class="note"><i data-icon="info"></i><span><code>update-m</code> 也可以放進批次。批次裡有任何會動到 Power Query 的操作時，資料保護啟用下會先跳一次<a href="#p10">確認視窗</a>（列出全部，一次最多 8 項）；寫完一樣要讓它生效並確認留下的版本（見<a href="#p8">第捌部</a>）。</span></span>
                     </div>
                 </div>
             </section>
 
             <!-- ================= 第拾部 ================= -->
             <section class="part" id="p10">
-                <div class="part-head"><h2><span class="n">拾</span>視覺層注入</h2><span class="sub">檔案驅動 · 最危險的端點</span></div>
+                <div class="part-head"><h2><span class="n">拾</span>資料保護</h2><span class="sub">每個欄位的內容 AI 能看到多少 · 由使用者決定</span></div>
                 <div class="api-grid">
-                    <div class="api-card destructive wide">
-                        <div class="badges"><span class="tag post">POST</span><span class="tag danger">會強制關閉 PBI</span></div>
-                        <h3>/api/inject-visual</h3>
-                        <h4>繞過介面限制，直接寫入 .pbip 底層</h4>
-                        <p>送出 Ctrl+S → <strong>Process.Kill() 強制砍掉目標那一個 Power BI Desktop</strong> → 寫入
-                           <code>visual.json</code>（可含全新分頁的 <code>page.json</code> 並更新 <code>pages.json</code>）→
-                           重新開啟<span class="hl">同一個檔案</span>。</p>
-                        <p>報表定義資料夾由目標實例推導：<code>X:\proj\name.pbip</code> → <code>X:\proj\name.Report\definition</code>。
-                           不依賴設定檔，所以不會發生「關掉你正在做的檔案、打開另一個」。</p>
-                        <p><strong>已內建的防護：</strong></p>
-                        <ul>
-                            <li>PageId／VisualId 必須是 20 位 hex（防路徑注入）</li>
-                            <li>VisualJson 必須是合法 JSON</li>
-                            <li>寫入路徑必須落在<strong>該 PBIP 專案資料夾內</strong>（防路徑穿越）</li>
-                            <li>選用的 <code>Security:AllowedBasePaths</code> 白名單：設了就必須同時符合</li>
-                            <li><strong>目標不是 PBIP 時直接中止</strong> —— 視覺注入只適用展開成資料夾的專案</li>
-                            <li><strong>只關掉目標那一個實例</strong> —— 其他開著的 PBI 不受影響</li>
-                        </ul>
-                        <span class="note danger"><i data-icon="alert"></i><span>強制中止仍有未存檔資料遺失的風險。使用前務必先確認，並手動存檔備份。<br>
-                        「強制結束行程 + 重新啟動程式」是防毒行為偵測的高風險特徵 —— <strong>公司電腦上預設不要用</strong>，請使用者自己在 Power BI Desktop 裡調整視覺。</span></span>
+                    <div class="api-card">
+                        <div class="badges"><span class="tag get">GET</span></div>
+                        <h3>/api/protection</h3>
+                        <h4>每個欄位的保護等級</h4>
+                        <p>逐表、逐欄回傳 <code>level</code>（<code>open</code> 開放／<code>pseudonym</code> 換成代號／<code>countOnly</code> 只能計數／<code>aggregateOnly</code> 只能彙總）、
+                           <code>source</code>（<code>explicit</code> 使用者逐欄設定／<code>pattern</code> 通用規則／<code>default</code> 預設開放）與符合的樣式 <code>rule</code>。
+                           另有 <code>enabled</code>、<code>configured</code>（存過至少一筆逐欄設定）、<code>savedAt</code>、<code>limits</code>（列數上限）、<code>summary</code>、
+                           <code>pathKnown</code>（服務知不知道檔案路徑）、<code>canSave</code>（認不認得出這份模型、設定存不存得起來）、
+                           <code>inheritedFrom</code>（設定是靠內容認回來的時候，當初儲存它的檔案）、<code>stale</code>（對不到現有欄位的設定）。</p>
+                        <p>等級是<span class="hl">結構資訊</span>，AI 可以放心讀 —— 先知道哪些欄位受限，才寫得出一次就過的查詢。</p>
+                        <span class="code">PowerShell：Get-PbiProtection [-Table 表] [-All] [-Raw]</span>
+                        <span class="note"><i data-icon="info"></i><span>等級怎麼決定：<strong>逐欄設定 ＞ 通用規則 ＞ 開放</strong>。通用規則是 <code>appsettings.json</code> 的 <code>DataProtection</code> 清單（欄名樣式，對每個模型都生效）。逐欄設定每個模型一份，存在 <code>%LOCALAPPDATA%\PBI_AI_Bridge\protection\</code>，只由服務讀寫。設定跟著<strong>模型</strong>走：先比完整路徑，對不上就靠資料行的固定代號（LineageTag）認 —— 檔案搬家、改名、另存新檔，或從 Power BI 裡面開啟（拿不到路徑）時設定都還在。靠內容認回來的設定只套用到認得出來的同一個資料行。</span></span>
+                    </div>
+                    <div class="api-card">
+                        <div class="badges"><span class="tag post">POST</span><span class="tag">放寬要使用者確認</span></div>
+                        <h3>/api/protection</h3>
+                        <h4>變更欄位的保護等級</h4>
+                        <p><strong>收緊</strong>（開放 → 受限、任何等級 → 只能計數）立刻生效。只要有任何一欄<strong>變寬鬆</strong>，服務就在使用者的螢幕跳出 Windows 確認視窗、列出每一欄的變更，他按「是」才套用；否則<u>整批不套用</u>並回 <strong>403</strong>。一次最多放寬 12 欄（視窗要列得完）。</p>
+                        <span class="code">{ "Changes": [
+    { "Table": "客戶", "Column": "電話", "Level": "countOnly" },
+    { "Table": "客戶", "Column": "客戶名稱", "Level": "pseudonym" } ] }</span>
+                        <p style="margin-top:14px"><code>Level: "default"</code> 拿掉逐欄設定、回到通用規則；<code>{ "Reset": true }</code> 清除這個模型全部的逐欄設定（有任何一欄因此變寬鬆，或設定檔讀不出來時，會跳確認視窗；不受 12 欄的限制）。文字欄位不能設成 <code>aggregateOnly</code>。</p>
+                        <p>把一個本來就開放、也沒有逐欄設定的欄位設成 <code>open</code> 不會存任何東西（回「沒有需要變更的項目」）。等待確認的期間設定被別的請求改過時回 <strong>409</strong>、這一批不套用 —— 重新讀取後再送。</p>
+                        <span class="code">PowerShell：Set-PbiProtection -Table 客戶 -Column 電話, 地址 -Level countOnly</span>
+                        <span class="note warn"><i data-icon="shield"></i><span>人平常在儀表板的「資料保護」分頁用點的。儀表板會把一次儲存拆成兩次送：先送收緊、再送放寬 —— 錯過確認視窗時，收緊的部分已經生效。</span></span>
+                    </div>
+                    <div class="api-card wide">
+                        <div class="badges"><span class="tag">確認視窗</span><span class="tag">AI 繞不過去</span></div>
+                        <h3>請使用者本人確認</h3>
+                        <h4>三種情況服務會自己跳出 Windows 確認視窗</h4>
+                        <div class="table-wrap">
+                            <table class="simple">
+                                <tr><th>情況</th><th>觸發的請求</th><th>視窗會列出</th></tr>
+                                <tr><td>放寬欄位等級</td><td><code>POST /api/protection</code>（有任何一欄變寬鬆 —— 包含 <code>Reset</code> 造成的；或設定檔讀不出來時的重設）</td><td>每一欄從什麼等級變成什麼等級</td></tr>
+                                <tr><td>放行一句被擋下的查詢</td><td><code>POST /api/query</code> 帶 <code>AskUser: true</code></td><td>被擋的原因、查詢提到的受限欄位、最多幾列、查詢內容</td></tr>
+                                <tr><td>經由 API 改寫 Power Query</td><td><code>update-m</code>、<code>upsert-expression</code>、<code>create-table</code>（<code>Kind: "m"</code>）、<code>add-column</code>（給 <code>SourceColumn</code>）、<code>restore</code>（範圍含 <code>mquery</code>／<code>expressions</code>）、含上述操作的 <code>batch</code></td><td>要改哪些表／共用查詢（一次最多 8 項）</td></tr>
+                            </table>
+                        </div>
+                        <p>為什麼需要：儀表板與 AI 用的是同一把金鑰，只靠金鑰的話 AI 可以自己放寬保護。視窗是服務行程自己畫的，內容由伺服器決定，按鈕只有坐在電腦前的人按得到。Power Query 也要確認，是因為 M 可以把受限欄位的內容搬進開放的欄位，而查詢掃描看不懂 M。</p>
+                        <p>預設按鈕是「否」；<strong>120 秒</strong>沒回答當成否；被拒絕之後 <strong>30 秒</strong>內不再詢問；同一時間只會有一個視窗。請求會等到使用者回答才回應。沒獲得同意時回 <strong>403</strong>：</p>
+                        <span class="code">{ "error": "⛔ …", "reason": "你在確認視窗選了「否」。…",
+  "answer": "No",            // No / Timeout / Busy / CoolingDown / Unavailable
+  "retryAfterSeconds": 30 }</span>
+                        <span class="note warn"><i data-icon="alert"></i><span>給 AI 代理：會跳視窗的動作，送出之前先在對話裡向使用者說明；被拒絕之後不要連續重送，也不要換個寫法再試。資料保護未啟用（<code>DataProtection:Enabled = false</code>）時，Power Query 的寫入不會跳視窗。</span></span>
                     </div>
                 </div>
             </section>
@@ -628,7 +676,7 @@ FROM $SYSTEM.DISCOVER_STORAGE_TABLE_COLUMN_SEGMENTS</span>
     </div>
 
     <footer class="footer">
-        PBI AI Bridge · .NET 8 + TOM（寫入）／ADOMD（查詢）· 38 個 API 端點 · 多實例感知<br>
+        PBI AI Bridge · .NET 8 + TOM（寫入）／ADOMD（查詢）· 39 個 API 端點 · 多實例感知<br>
         PowerShell 封裝見 <code>tools/PBI-Bridge.ps1</code>，工作規範見 <code>CLAUDE.md</code>
     </footer>
 

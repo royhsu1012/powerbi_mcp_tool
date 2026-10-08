@@ -1,5 +1,5 @@
 # 忽略 .NET 編譯產生的二進位與暫存檔
-# ⚠️ bin/ 底下有一份 appsettings.json 的建置副本，裡面是同一把 API Key —— 一定要排除
+# ⚠️ bin/ 底下有一份 appsettings.json 的副本；舊版產生的那一份裡還有 API Key —— 一定要排除
 pbibridge_csharp/bin/
 pbibridge_csharp/obj/
 
@@ -11,7 +11,8 @@ pbibridge_csharp/obj/
 .DS_Store
 Thumbs.db
 
-# 隱藏個人環境配置與私鑰，防止資安外洩
+# 個人環境設定（自己調過的通用規則）。金鑰已經不放在這裡（改存 %LOCALAPPDATA%\PBI_AI_Bridge\），
+# 但舊版產生的那一份裡可能還留著一把 —— 繼續排除
 pbibridge_csharp/appsettings.json
 
 # 隱藏除錯用的暫存資料庫與本機捷徑

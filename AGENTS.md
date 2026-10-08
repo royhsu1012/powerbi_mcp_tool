@@ -12,13 +12,15 @@
 
 ## 五條最關鍵的規則（不論你是哪個代理）
 
-1. **資料保護由伺服器端強制**，不是靠代理自律：客戶身分欄位只能數不能取值、金額必須包在聚合函式內，違規回 **403**。這是 `pbibridge_csharp/Program.cs` 的 `DataGuard` 做的，**任何代理都無法自我豁免**。管制清單在 `appsettings.json → DataProtection`（預設是通用樣式，請依你自己的資料模型增補）。詳見 `CLAUDE.md` 的「資料保護規範」。
+1. **資料保護由伺服器端強制**，不是靠代理自律：每個欄位有一個等級（開放／換成代號／只能計數／只能彙總），由**使用者**在儀表板的「資料保護」分頁逐欄設定；受限的欄位只能計數、彙總或以代號分組，違規回 **403**。這是 `pbibridge_csharp/Program.cs` 的 `DataGuard` 做的，**任何代理都無法自我豁免**。寫查詢前先用 `Get-PbiProtection` 看哪些欄位受限。
+   放寬等級、放行一句被擋下的查詢（`Invoke-Dax -AskUser`）、經由 API 改寫 Power Query，都會在使用者的螢幕跳出 Windows 確認視窗，他按「是」才算數 —— **送出之前先在對話裡說明要做什麼、為什麼；被拒絕之後不要連續重送，也不要改寫查詢去繞**。詳見 `CLAUDE.md` 的「資料保護規範」。
 
 2. **一律走 `tools/PBI-Bridge.ps1`**，不要自己直連 `msmdsrv` 或直接載入 ADOMD —— 那會繞過保護，也會踩到中文編碼問題。
-   （Claude Code 另有 `.claude/hooks/guard-data-access.ps1` 擋這條繞路；**其他代理沒有這個 hook**，更要自律。但伺服器端的 DataGuard 仍會攔查詢回傳值，所以真正的防線一直都在。）
+   同理，**不要讀寫 `%LOCALAPPDATA%\PBI_AI_Bridge\protection\`**（逐欄保護設定存在那裡，只由服務讀寫；直接改檔等於不經使用者同意就放寬）。
+   （Claude Code 另有 `.claude/hooks/guard-data-access.ps1` 檢查 Bash／PowerShell 指令的文字、擋掉常見的繞路寫法，以及 `.claude/settings.json` 裡禁止檔案工具讀寫保護設定資料夾的權限規則；**其他代理沒有這兩層**，更要自律。這兩層看的是文字與路徑，沒被擋到不代表可以做。伺服器端的 DataGuard 仍會攔查詢回傳值，所以真正的防線一直都在。）
 
 3. **標準開發流程**：
-   讀（`Get-PbiSchema`）→ 動手前留退路（`New-PbiSnapshot`）→ 寫入（`Set-PbiMeasure` 等）→ 驗算（`Invoke-Dax`）→ 存檔（`Save-PbiModel`，確認 `fileChanged = true`）。
+   讀（`Get-PbiSchema`）→ 動手前留退路（`New-PbiSnapshot`）→ 寫入（`Set-PbiMeasure` 等）→ 驗算（`Invoke-Dax`）→ 存檔（`Save-PbiModel -Expect <剛寫的量值名稱>`，確認 `expectFound = true` —— `fileChanged` 只代表有檔案被寫了，不代表剛寫的內容進去了）。
 
 4. **防毒相容（公司電腦）**：不要用 `Stop-Process` 終止行程、不要執行剛編譯出來的 `.exe`、不要遞迴掃描使用者資料夾或瀏覽器設定檔、不要用 `-EncodedCommand`。服務要重開就請使用者自己雙擊 `🚀啟動PBI終極儀表板.bat`。完整清單見 `CLAUDE.md` 的「防毒軟體相容規範」。
 
@@ -31,7 +33,7 @@
 | 檔案 | 內容 |
 |---|---|
 | **`CLAUDE.md`** | 完整工作規範（Claude Code 自動載入；其他代理請主動讀取）。這是最權威的一份。 |
-| **`README.md`** | 給使用者（人）的完整說明：安裝、啟動、資料保護清單、與 AI 協作時使用者要做的事、疑難排解。 |
+| **`README.md`** | 給使用者（人）的完整說明：安裝、啟動、設定 AI 能讀哪些欄位、與 AI 協作時使用者要做的事、疑難排解。 |
 | **`API_Documentation.html`** | 端點總覽。服務開著時也可從 <http://localhost:5500/API_Documentation.html> 開啟。 |
 
-> 這是通用型工具，**不預設綁定任何特定報表或資料模型**。第一次使用請依 `README.md` 的「快速開始」（雙擊 `🚀啟動PBI終極儀表板.bat` 即可），並在 `appsettings.json` 補上你自己資料中的敏感欄位。
+> 這是通用型工具，**不預設綁定任何特定報表或資料模型**。第一次使用請依 `README.md` 的「快速開始」（雙擊 `🚀啟動PBI終極儀表板.bat` 即可）。使用者還沒在儀表板的「資料保護」分頁設定過這份模型時（`(Get-PbiProtection -Raw).configured` 是 `false`），**查資料之前先提醒他花一分鐘設定** —— 預設的通用規則只認得英文欄名。（他說看過了、都不用改的話就不要再提醒：那種情況 `configured` 會一直是 `false`。）

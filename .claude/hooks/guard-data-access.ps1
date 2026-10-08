@@ -34,12 +34,19 @@ $rules = @(
     @{
         Pattern = 'AdomdConnection|Microsoft\.AnalysisServices|AnalysisServices\.AdomdClient|Invoke-ASCmd|Provider\s*=\s*MSOLAP|LoadWithPartialName'
         Reason  = '偵測到直接連線 Analysis Services / 載入 ADOMD 元件的寫法。'
-        Why     = '這條路徑完全繞過橋接服務，伺服器端的客戶身分與金額欄位管制對它無效。'
+        Why     = '這條路徑完全繞過橋接服務，伺服器端的逐欄保護等級對它無效。'
     },
     @{
         Pattern = '(Invoke-RestMethod|Invoke-WebRequest|curl|wget)[^\r\n]{0,200}localhost:5500'
         Reason  = '偵測到手刻 HTTP 請求直接呼叫橋接服務。'
-        Why     = '請改用 tools\PBI-Bridge.ps1 提供的函式（Invoke-Dax / Get-PbiSchema …）。手刻請求容易繞開用戶端的防護與 UTF-8 編碼處理。'
+        Why     = '請改用 tools\PBI-Bridge.ps1 提供的函式（Invoke-Dax / Get-PbiSchema …）。手刻請求會漏掉 UTF-8 編碼處理與目標實例的選定。'
+    },
+    @{
+        # 逐欄保護設定存在 %LOCALAPPDATA%\PBI_AI_Bridge\protection\。直接改檔不會經過確認視窗，
+        # 而服務下次啟動就會照改過的內容執行 —— 等於不經使用者同意就放寬。
+        Pattern = 'PBI_AI_Bridge[\\/]+protection'
+        Reason  = '偵測到直接存取逐欄保護設定檔的資料夾。'
+        Why     = '每個欄位的等級只能從儀表板的「資料保護」分頁或 Set-PbiProtection 變更；放寬要使用者本人在確認視窗按「是」。要看目前的等級請用 Get-PbiProtection。'
     },
     @{
         Pattern = 'DataProtection[^\r\n]{0,120}(Enabled[^\r\n]{0,40}(false|\$false)|DenyColumns[^\r\n]{0,40}@\(\s*\))'
@@ -59,6 +66,10 @@ foreach ($rule in $rules) {
 正確做法：所有模型查詢一律經由 tools\PBI-Bridge.ps1 → localhost:5500，
 讓伺服器端的欄位管制生效。若這次確實有正當理由需要例外，
 請停下來向使用者說明你想做什麼、為什麼，由使用者自行執行。
+
+（這個檢查看的是整段指令的文字：指令裡只是「提到」那些字串也會被擋，
+例如提交訊息、或把含有那些字串的文件用 heredoc 寫出去。
+這種情況請改用檔案工具（Write / Edit / Grep），不要為了過關把字串拆開或改寫。）
 "@
         $bytes = $utf8.GetBytes($msg + [Environment]::NewLine)
         $err = [Console]::OpenStandardError()

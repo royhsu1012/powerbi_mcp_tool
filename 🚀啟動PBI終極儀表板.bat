@@ -8,7 +8,7 @@ rem
 rem  Every run walks the same checklist and only does what is missing:
 rem    already running?  -> just open the dashboard
 rem    .NET SDK          -> first time only (offers to install it)
-rem    settings file     -> first time only (creates your own API Key)
+rem    settings file     -> first time only (copied from the template)
 rem    libraries         -> first time only (offers to download them)
 rem    compile           -> only when the program changed
 rem    start             -> the server opens the dashboard once it is ready
@@ -68,13 +68,16 @@ echo       OK
 rem === [3/5] settings file ====================================================
 echo [3/5] Settings file
 if exist "%CONFIG%" goto CONFIG_OK
-rem Paths travel through the environment (Unicode) instead of the command line,
-rem so a folder name with non-ASCII characters cannot mangle them.
-powershell -NoProfile -Command "$k=[guid]::NewGuid().ToString('N').ToUpper(); $t=[IO.File]::ReadAllText($env:TEMPLATE); [IO.File]::WriteAllText($env:CONFIG, $t.Replace('__PUT_YOUR_OWN_RANDOM_KEY_HERE__',$k), (New-Object Text.UTF8Encoding $false))"
+rem Nothing secret goes into this file. The API Key is not in it: the server
+rem creates the key the first time it starts and keeps it in the user profile
+rem (LOCALAPPDATA, folder PBI_AI_Bridge). That is outside this folder, so
+rem copying or zipping this folder never takes the key along.
+rem So a plain copy of the template is all it takes.
+copy /y "%TEMPLATE%" "%CONFIG%" >nul
 if errorlevel 1 goto CONFIG_FAIL
 if not exist "%CONFIG%" goto CONFIG_FAIL
-echo       Created, with an API Key made just for this computer.
-echo       The dashboard and the AI tools read it by themselves.
+echo       Created from the template. It holds no key and no password.
+echo       The server makes its own API Key the first time it starts.
 call :PROTECTION_REMINDER
 goto STEP_LIBS
 :CONFIG_OK
@@ -211,9 +214,9 @@ goto SDK_WAIT
 echo.
 echo [ERROR] Could not create pbibridge_csharp\appsettings.json.
 echo.
-echo         Do it by hand: copy appsettings.template.json to appsettings.json,
-echo         then replace __PUT_YOUR_OWN_RANDOM_KEY_HERE__ with the output of
-echo           [System.Guid]::NewGuid().ToString('N').ToUpper()
+echo         Do it by hand: in the pbibridge_csharp folder, copy
+echo         appsettings.template.json to appsettings.json, then double-click
+echo         this file again.
 echo.
 pause
 exit /b 1
@@ -316,18 +319,15 @@ exit /b 0
 :PROTECTION_REMINDER
 echo.
 echo       ------------------------------------------------------------------
-echo       IMPORTANT - protect your data before AI queries it
+echo       IMPORTANT - decide what the AI may read before it queries your data
 echo.
-echo       The default list only knows English column names such as
-echo       customer, amount, price. If your model uses Chinese column names,
-echo       add them to the DataProtection section of
-echo         pbibridge_csharp\appsettings.json
-echo       See README.md, section 4, for examples.  
+echo       When the dashboard opens, click the second tab at the top
+echo       (the one with the shield icon), then:
+echo         1. click the orange button to apply all suggestions
+echo         2. look through the list and fix anything that is wrong
+echo         3. press Save
+echo       It takes about a minute. Until then only English column names
+echo       such as customer, amount and price are protected.
 echo       ------------------------------------------------------------------
 echo.
-choice /c YN /n /m "      Open that file in Notepad now? [Y/N] "
-if errorlevel 2 exit /b 0
-start "" notepad "%CONFIG%"
-echo       Edit, save and close Notepad - then press any key here to continue.
-pause >nul
 exit /b 0

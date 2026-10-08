@@ -13,7 +13,7 @@ $script:PbiRoot    = Split-Path -Parent $PSScriptRoot
 
 # 專案根目錄。刻意用函式而不是直接讀 $script:PbiRoot ——
 # 從「子腳本」呼叫本檔函式時（例如 tools\Test-DataGuard.ps1），$script: 作用域
-# 不保證解析得到，會變成 $null，錯誤訊息還會誤導成「appsettings.json 缺少 ApiKey」。
+# 不保證解析得到，會變成 $null，之後每一個用到專案路徑的函式都會報出不相干的錯誤。
 # $PSScriptRoot 在函式內解析的是本檔所在位置，與呼叫端作用域無關。
 function Get-PbiRootPath {
     if ($PSScriptRoot) { return (Split-Path -Parent $PSScriptRoot) }
@@ -28,15 +28,21 @@ $script:PbiTarget     = $null
 $script:PbiTargetPath = $null
 
 function Get-PbiApiKey {
-    <#  從 appsettings.json 讀取 API Key（讀一次後快取，不寫死在檔案裡） #>
+    <#
+      讀取 API Key（讀一次後快取，不寫死在檔案裡）。
+      金鑰由橋接服務在第一次啟動時產生，存在這台電腦的使用者資料夾（%LOCALAPPDATA%\PBI_AI_Bridge\api-key.txt），
+      不在專案資料夾裡 —— 複製或分享專案資料夾不會把它帶出去。內部使用即可，不要印出來。
+    #>
     if ($script:PbiApiKey) { return $script:PbiApiKey }
-    $cfgPath = Join-Path (Get-PbiRootPath) "pbibridge_csharp\appsettings.json"
-    if (-not (Test-Path $cfgPath)) {
-        throw "找不到 appsettings.json：$cfgPath（請由 appsettings.template.json 複製建立）"
+    # 和服務用同一種方式找資料夾（不讀 $env:LOCALAPPDATA：那個變數可以被改掉，兩邊就對不上了）
+    $keyPath = Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'PBI_AI_Bridge\api-key.txt'
+    if (-not (Test-Path -LiteralPath $keyPath)) {
+        throw ("找不到 API 金鑰檔。金鑰是橋接服務啟動時產生的 —— 請雙擊 🚀啟動PBI終極儀表板.bat。" +
+               "黑窗已經開著的話，代表跑的是舊版：請先關掉它再雙擊一次。")
     }
-    $cfg = Get-Content $cfgPath -Raw -Encoding UTF8 | ConvertFrom-Json
-    $script:PbiApiKey = $cfg.Security.ApiKey
-    if (-not $script:PbiApiKey) { throw "appsettings.json 中缺少 Security.ApiKey" }
+    $key = ([System.IO.File]::ReadAllText($keyPath)).Trim()
+    if (-not $key) { throw "API 金鑰檔是空的。請關掉服務的黑窗、重新雙擊 🚀啟動PBI終極儀表板.bat，服務會重新產生一把。" }
+    $script:PbiApiKey = $key
     return $script:PbiApiKey
 }
 
@@ -47,13 +53,11 @@ function Invoke-PbiApi {
         [ValidateSet('GET','POST')][string]$Method = 'GET',
         [hashtable]$Body,
         [int]$TimeoutSec = 120,
-        [switch]$NoRetry,
-        [hashtable]$ExtraHeaders
+        [switch]$NoRetry
     )
     $headers = @{ "X-API-Key" = (Get-PbiApiKey) }
     # 帶上選定的目標實例；沒選就交給伺服器判斷（單一實例自動採用，多實例會拒絕）
     if ($script:PbiTarget) { $headers["X-PBI-Target"] = $script:PbiTarget }
-    if ($ExtraHeaders) { foreach ($k in $ExtraHeaders.Keys) { $headers[$k] = $ExtraHeaders[$k] } }
     $uri     = "$script:PbiBaseUrl$Path"
     try {
         if ($Method -eq 'GET') {
@@ -124,7 +128,7 @@ function Test-PbiBridge {
     if ($script:PbiTarget) {
         Write-Host "🎯 目前目標：$script:PbiTarget" -ForegroundColor Green
     } elseif ($r.Count -gt 1) {
-        Write-Host "⚠️ 有多個實例但尚未選定目標 — 寫入類操作會被拒絕。請先執行 Use-PbiInstance <檔名片段或 Port>" -ForegroundColor Yellow
+        Write-Host "⚠️ 有多個實例但尚未選定目標 — 所有請求（包含讀取）都會被拒絕。請先執行 Use-PbiInstance <檔名片段或 Port>" -ForegroundColor Yellow
     }
 }
 
@@ -136,6 +140,8 @@ function Get-PbiInstances {
     <#
       列出所有執行中的 Power BI 實例（各自的 Port、檔案、行程）。
       一律回傳陣列 —— PS 5.1 對單一元素會攤平成物件，讓 .Count 變成 $null。
+      代價是不能直接接管線（整個陣列會被當成一個物件，Select-Object 會印出空白）：
+      要接管線請加括號  (Get-PbiInstances) | Select-Object port, fileName
     #>
     ,@((Invoke-PbiApi -Path "/api/instances").Instances)
 }
@@ -181,7 +187,13 @@ function Use-PbiInstance {
     $script:PbiTarget     = "$($hits[0].port)"
     $script:PbiTargetPath = $hits[0].filePath
     Write-Host "🎯 目標已設定：$($hits[0].fileName)  (Port $($hits[0].port), $($hits[0].kind))" -ForegroundColor Green
-    Write-Host "   路徑：$($hits[0].filePath)" -ForegroundColor Gray
+    if ($hits[0].filePath) {
+        Write-Host "   路徑：$($hits[0].filePath)" -ForegroundColor Gray
+    } else {
+        # 服務只能從 Power BI 的啟動參數得知路徑：先開 Power BI 再從裡面選檔案就拿不到
+        Write-Host "   路徑：不明（這份檔案是從 Power BI 裡面開啟的）。讀寫模型與資料保護照常；" -ForegroundColor Yellow
+        Write-Host "         存檔驗證、報表健檢不能用，快照與 M 備份下次開啟找不回來 —— 需要的話請使用者改用雙擊檔案的方式開啟" -ForegroundColor Yellow
+    }
 }
 
 # ---------------------------------------------------------------------------
@@ -224,6 +236,29 @@ function Get-PbiExpressions { Invoke-PbiApi -Path "/api/expressions" }
 function Test-PbiModel {
     <#  模型健檢：壞掉的公式、雙向關聯、孤島表、可能沒人用的欄位…… #>
     Invoke-PbiApi -Path "/api/validate" -TimeoutSec 180
+}
+
+function Test-PbiReport {
+    <#
+      報表健檢（僅 PBIP）：直接改過報表資料夾裡的檔案（visual.json、page.json…）之後，
+      在請使用者按「接受變更」之前先跑一次。
+
+      Errors   會讓視覺壞掉或變成空白：JSON 格式錯誤、引用了模型裡不存在的欄位或量值、
+               頁面清單對不上、視覺名稱重複
+      Warnings 值得看一眼：視覺超出頁面或互相重疊、互動設定指向不存在的視覺、
+               格式設定指向已經不在視覺裡的欄位、布林欄位上的篩選
+
+      比對的是「磁碟上的報表檔案」對「Power BI 記憶體中的模型」，所以要先選定那份 PBIP。
+      只回傳結構資訊（頁面、視覺類型與標題、欄位名稱、座標），不含篩選條件裡的值。
+      查不到的：文字有沒有被擠壓、配色、好不好讀 —— 那些要請使用者看畫面或截圖。
+
+      範例：
+        $r = Test-PbiReport
+        "$($r.pages) 頁 / $($r.visuals) 個視覺：$($r.errorCount) 個錯誤、$($r.warningCount) 個警告"
+        $r.errors   | Format-Table page, visual, kind, detail -Wrap
+        $r.warnings | Group-Object kind | Select-Object Count, Name
+    #>
+    Invoke-PbiApi -Path "/api/validate-report" -TimeoutSec 180
 }
 
 function Get-PbiMQuery {
@@ -290,23 +325,30 @@ function Get-PbiTableProfile {
     if (-not $t) { throw "找不到資料表：$Table" }
 
     $numeric = @('Int64','Double','Decimal')
-    $parts   = @("`"列數`", COUNTROWS('$Table')")
-
+    # 別名一律用不帶欄名的代碼（b0 / d0 / s0），結果回來之後再對回欄名。
+    # 別名裡帶著欄名的話，欄名剛好符合保護規則的樣式（amount、customer…）時，
+    # 結果欄位會被當成那個受限欄位擋下來 —— 而改 M 前後最常拿來剖析的正是那些欄位。
+    $parts = @("`"n`", COUNTROWS('$Table')")
+    $names = [ordered]@{ '[n]' = '列數' }
+    $i = 0
     foreach ($c in $Columns) {
         $col = $t.Columns | Where-Object { $_.Name -eq $c }
         if (-not $col) { throw "資料表 '$Table' 沒有欄位 [$c]" }
         $ref = "'$Table'[$c]"
         # COUNTBLANK/SUM 在沒有結果時回傳 BLANK，會讓「0」和「查詢失敗」長得一樣 —— 一律轉成 0
-        $parts += "`"空值_$c`", COALESCE(COUNTBLANK($ref), 0)"
-        $parts += "`"相異_$c`", COALESCE(DISTINCTCOUNT($ref), 0)"
-        if ($numeric -contains $col.DataType) { $parts += "`"總和_$c`", COALESCE(SUM($ref), 0)" }
+        $parts += "`"b$i`", COALESCE(COUNTBLANK($ref), 0)";     $names["[b$i]"] = "空值_$c"
+        $parts += "`"d$i`", COALESCE(DISTINCTCOUNT($ref), 0)";  $names["[d$i]"] = "相異_$c"
+        if ($numeric -contains $col.DataType) { $parts += "`"s$i`", COALESCE(SUM($ref), 0)"; $names["[s$i]"] = "總和_$c" }
+        $i++
     }
 
     $r = Invoke-Dax ("EVALUATE ROW(" + ($parts -join ", ") + ")") -TimeoutSeconds $TimeoutSeconds
     $out = [ordered]@{ 資料表 = $Table; 欄位數 = @($t.Columns).Count; 取樣時間 = (Get-Date).ToString('HH:mm:ss') }
-    $r.Rows[0].PSObject.Properties | ForEach-Object { $out[($_.Name -replace '^\[|\]$','')] = $_.Value }
+    $row = $r.Rows[0]
+    foreach ($k in $names.Keys) { $out[$names[$k]] = $row.$k }
     [PSCustomObject]$out
 }
+
 
 function Compare-PbiTableProfile {
     <#  比對兩份剖析結果，只列出有變動的項目。沒變動的不佔版面。 #>
@@ -335,89 +377,130 @@ function Invoke-Dax {
       執行唯讀 DAX 查詢。查詢必須以 EVALUATE 或 DEFINE 開頭。
       範例：(Invoke-Dax 'EVALUATE ROW("結果", [銷售總額])').Rows
 
-      ⚠️ 資料保護：真正的把關在伺服器端（欄位層級管制 + 結果欄位掃描），
-         這裡的檢查只是提早失敗、給出比較好讀的訊息，不是安全邊界。
+      ⚠️ 資料保護由伺服器把關。每個欄位有一個等級（使用者在儀表板的「資料保護」分頁設定，
+         用 Get-PbiProtection 查）：
+           開放       可以讀取內容（逐列明細有列數上限）
+           換成代號   可以計數，或直接當分組鍵 —— 結果裡的值會是 ID_3FA2B81C07 這種代號
+           只能計數   只能放在 DISTINCTCOUNT / COUNTROWS 這類計數函式裡
+           只能彙總   只能放在 SUM / AVERAGE / MIN / MAX 這類聚合函式裡（寫在篩選條件裡也可以）
 
-         客戶身分欄位只能用計數類函式（DISTINCTCOUNT / COUNTROWS …）取統計量；
-         金額欄位必須包在聚合函式內。被擋時伺服器會在「服務主控台」印出一組
-         一次性權杖 —— AI 看不到那個視窗，只能請使用者確認後貼過來，
-         再用 -DetailToken <權杖> 重送「同一句」查詢。
+      被擋下（403）時：先想這個值是不是真的需要 —— 多半換成彙總寫法就夠了。
+      真的需要時，先向使用者說明要看哪些欄位、幾列、為什麼，再加 -AskUser 重送「同一句」：
+      使用者的螢幕會跳出確認視窗（列出原因、受限欄位、列數與查詢內容），他按「是」才放行這一次。
+      -AskUser 不是讓你自己放行的開關，按鈕在使用者那邊。被拒絕之後不要連續重送，
+      也不要改寫查詢去繞 —— 回應的 retryAfterSeconds 之內伺服器不會再跳視窗。
 
-      -Pseudonymize：讓身分欄位可以當分組鍵，但值會在伺服器端換成穩定代號。
-         用途是「按客戶分組看營收分布」這類分析 —— 需要區分客戶，不需要知道是誰。
+      「換成代號」欄位的寫法：直接當分組鍵，外面可以再包一層 TOPN。
 
-           (Invoke-Dax 'EVALUATE SUMMARIZECOLUMNS(Customers[account name],
-                          "額", SUM(Sales[amount]))' -Pseudonymize).Rows
-           → ID_A3F1B2 | 12,345,678
+           (Invoke-Dax 'EVALUATE TOPN(20, SUMMARIZECOLUMNS(Customers[account name],
+                          "額", SUM(Sales[amount])), [額], DESC)').Rows
+           → ID_3FA2B81C07 | 12,345,678
 
-         代號穩定（同一個客戶跨查詢都是同一個代號，可以串接分析），但推不回原值。
-         真名只印在**服務主控台**，你看得到、AI 看不到 —— 要對照請看那個視窗。
-
-         仍然擋下的用法：MAX / CONCATENATEX / SELECTCOLUMNS 取別名 ——
-         那些會讓真名躲在別名欄位底下，遮罩抓不到。去敏只放行「當分組鍵」。
+         代號穩定（同一個值跨查詢都是同一個代號，可以串接分析），但推不回原值。
+         真名只印在**服務主控台**，使用者看得到、AI 看不到。
+         回應的 pseudonymized 會列出哪些欄位是代號 —— 不要把代號當成真實名稱解讀或寫進量值。
+         不能放進變數或量值，也不能用 MAX / CONCATENATEX / SELECTCOLUMNS 取值或拿來比較。
     #>
     param(
         [Parameter(Mandatory, Position=0)][string]$Query,
         [int]$MaxRows = 1000,
         [int]$TimeoutSeconds = 60,
-        # 使用者從服務主控台取得的一次性權杖。刻意不是 [switch] ——
-        # 開關能被模型自己按下，權杖不能。
-        [string]$DetailToken,
-        # 去敏模式：身分欄位可以當分組鍵，但值會在伺服器端換成穩定代號（ID_xxxxxx）。
-        # 這個「可以自己按」是安全的 —— 它只會讓輸出更少，不會讓輸出更多。
-        [switch]$Pseudonymize
+        # 這句查詢被資料保護擋下時，請使用者在確認視窗決定要不要放行這一次。先向使用者說明過再用。
+        [switch]$AskUser
     )
+    $body    = @{ Query = $Query; MaxRows = $MaxRows; TimeoutSeconds = $TimeoutSeconds }
+    $timeout = $TimeoutSeconds + 30
+    if ($AskUser) {
+        $body.AskUser = $true
+        # 沒有明講要幾列就不送 MaxRows：放行之後帶回幾列，由伺服器照逐列明細的上限決定
+        # （確認視窗會把列數寫給使用者看，預設的 1000 會讓他以為你要一千列）
+        if (-not $PSBoundParameters.ContainsKey('MaxRows')) { $body.Remove('MaxRows') }
+        # 伺服器會先跑一次（被擋下）、等使用者回答（最多 120 秒）、同意之後再跑一次
+        $timeout = 2 * $TimeoutSeconds + 200
+    }
+    Invoke-PbiApi -Path "/api/query" -Method POST -Body $body -TimeoutSec $timeout
+}
 
-    if (-not $DetailToken -and -not $Pseudonymize) {
-        $q = $Query -replace '\s+', ' '
-        $reason = $null
+# ---------------------------------------------------------------------------
+# 資料保護：每個欄位的等級
+# ---------------------------------------------------------------------------
 
-        # 樣式一：直接 EVALUATE 一張資料表（整表拉回）
-        if ($q -match "(?i)^\s*EVALUATE\s+('[^']+'|\[?\w+\]?)\s*$") {
-            $reason = "直接 EVALUATE 整張資料表"
-        }
-        # 樣式二：抽樣函式且未經欄位挑選／彙總包裝
-        elseif ($q -match '(?i)\b(TOPN|SAMPLE)\s*\(' -and
-                $q -notmatch '(?i)\b(SELECTCOLUMNS|SUMMARIZECOLUMNS|SUMMARIZE|ROW|CALCULATETABLE\s*\(\s*SUMMARIZE)\b') {
-            $reason = "使用 TOPN/SAMPLE 抽取明細列，且未以 SELECTCOLUMNS/SUMMARIZE 挑選欄位"
-        }
+function Get-PbiProtection {
+    <#
+      每個欄位目前的保護等級。寫查詢之前先看一眼，就不用靠被擋下來才知道哪些欄位受限。
+      等級是結構資訊（不是資料內容），可以放心讀。
 
-        if ($reason) {
-            throw @"
-⛔ 已擋下可能外洩明細資料的查詢
-   原因：$reason
+        level   open（開放）/ pseudonym（換成代號）/ countOnly（只能計數）/ aggregateOnly（只能彙總）
+        source  explicit＝使用者在儀表板設定的、pattern＝通用規則（appsettings.json 的樣式）、default＝預設開放
 
-   此查詢會將真實資料列送入 Claude 的 context（即傳送至雲端）。
+      預設只列出「受限」的欄位（通常只有少數幾個）；-All 列出全部。
 
-   建議改用彙總查詢：
-     EVALUATE ROW("筆數", COUNTROWS(<表>), "總額", SUM(<表>[<欄>]))
-
-   或去識別化後再取樣：
-     EVALUATE TOPN(5, SELECTCOLUMNS(<表>, "分類", [<非敏感欄>]))
-
-   確實必須查看明細時：先向使用者說明會看到哪些欄位、幾列、為何彙總不足。
-   同意後請他把服務主控台印出的一次性權杖貼給你，再用 -DetailToken <權杖> 重送。
-"@
+      範例：
+        Get-PbiProtection                         # 哪些欄位受限
+        Get-PbiProtection -Table Sales -All       # Sales 每一欄的等級
+        (Get-PbiProtection -Raw).summary          # 各等級有幾欄
+    #>
+    param(
+        [string]$Table,
+        [switch]$All,
+        [switch]$Raw
+    )
+    $r = Invoke-PbiApi -Path "/api/protection"
+    if ($Raw) { return $r }
+    if (-not $r.enabled) { Write-Warning "資料保護目前是關閉的（appsettings.json 的 DataProtection:Enabled），下列等級不會被強制執行。" }
+    if ($r.problem)      { Write-Warning $r.problem }
+    foreach ($t in $r.tables) {
+        if ($Table -and $t.name -notlike $Table) { continue }
+        foreach ($c in $t.columns) {
+            if (-not $All -and $c.level -eq 'open') { continue }
+            [PSCustomObject]@{
+                Table = $t.name; Column = $c.name; DataType = $c.dataType
+                Level = $c.level; Source = $c.source; Rule = $c.rule
+            }
         }
     }
+}
 
-    $extra = if ($DetailToken) { @{ "X-PBI-Allow-Detail" = $DetailToken } } else { $null }
-    Invoke-PbiApi -Path "/api/query" -Method POST -Body @{
-        Query          = $Query
-        MaxRows        = $MaxRows
-        TimeoutSeconds = $TimeoutSeconds
-        Pseudonymize   = [bool]$Pseudonymize
-    } -TimeoutSec ($TimeoutSeconds + 30) -ExtraHeaders $extra
+function Set-PbiProtection {
+    <#
+      變更欄位的保護等級。
+
+      ⚠️ 收緊（開放 → 受限、其他 → 只能計數）立刻生效。
+         放寬不是你能決定的：服務會在使用者的電腦上跳出確認視窗，列出要放寬哪些欄位，
+         使用者按「是」才生效；按「否」或兩分鐘沒回應，整批都不套用（回 403，
+         回應的 answer 說明原因、retryAfterSeconds 之內不會再跳視窗）。一次最多放寬 12 欄。
+         所以要放寬之前，先向使用者說明要放寬哪些欄位、為什麼 —— 更好的做法是請他
+         自己到儀表板（http://localhost:5500/）的「資料保護」分頁調整。
+         不要為了讓查詢通過而去放寬保護。
+
+      -Level default：拿掉逐欄設定，回到通用規則。
+
+      範例：
+        Set-PbiProtection -Table Customers -Column phone, address -Level countOnly
+        Set-PbiProtection -Table Sales -Column discount -Level aggregateOnly
+    #>
+    param(
+        [Parameter(Mandatory)][string]$Table,
+        [Parameter(Mandatory)][string[]]$Column,
+        [Parameter(Mandatory)][ValidateSet('open','pseudonym','countOnly','aggregateOnly','default')][string]$Level
+    )
+    $changes = @($Column | ForEach-Object { @{ Table = $Table; Column = $_; Level = $Level } })
+    # 放寬時伺服器會等使用者回應確認視窗（最多兩分鐘），逾時要比那個長
+    Invoke-PbiApi -Path "/api/protection" -Method POST -Body @{ Changes = $changes } -TimeoutSec 180
 }
 
 function Invoke-PbiDmv {
     <#
-      執行 $SYSTEM DMV 查詢（效能統計、相依性追蹤）。
+      執行 $SYSTEM DMV 查詢（模型的中繼資料與儲存統計）。
       這些系統檢視只含中繼資料與統計，不會回傳事實資料列。
       範例：Invoke-PbiDmv 'SELECT * FROM $SYSTEM.DISCOVER_STORAGE_TABLES'
 
-      ⚠️ $SYSTEM.TMSCHEMA_PARTITIONS 會回傳 M 腳本（含連線字串），
-         依 CLAUDE.md 規則三，非必要不要查它。
+      ⚠️ 資料保護啟用時只能查白名單上的檢視（模型的中繼資料與儲存統計：TMSCHEMA_TABLES /
+         COLUMNS / MEASURES / RELATIONSHIPS …、DISCOVER_STORAGE_*、DISCOVER_OBJECT_MEMORY_USAGE）。
+         其他檢視一律 403 —— 有些會回傳欄位的實際內容（MDSCHEMA_MEMBERS）、M 腳本
+         （TMSCHEMA_PARTITIONS）或別的連線執行過的查詢文字。相依性檢視（DISCOVER_CALC_DEPENDENCY）也不在名單內 ——
+         它會帶出運算式原文。被擋時回應的 allowed 會列出可以查的。
+         寫法只接受 SELECT <欄位或 *> FROM $SYSTEM.<檢視> [WHERE … | ORDER BY …]，一句只查一個檢視。
     #>
     param(
         [Parameter(Mandatory, Position=0)][string]$Query,
@@ -454,13 +537,32 @@ function Get-PbiModelStats {
 
 function Save-PbiModel {
     <#
-      模擬 Ctrl+S 存檔，並用選定實例自己的檔案（PBIX 或 PBIP）修改時間驗證是否真的存到。
+      模擬 Ctrl+S 存檔，並驗證是否真的存到。驗證範圍只有選定實例自己的檔案：
+      PBIX 看那一個檔，PBIP 看它的 .Report 與 .SemanticModel 兩個資料夾。
+
+      -WaitSeconds  最多等幾秒。偵測到檔案寫完就提早回傳，所以調高不會讓一般情況變慢。
+      -Expect       存檔後必須出現在磁碟上的文字，例如剛寫入的量值名稱或公式裡一小段有辨識度的內容。
+                    fileChanged = true 只代表「有檔案被寫了」，不代表剛寫的東西進去了 ——
+                    實際遇過存下去的是舊狀態（推測是 Power BI 還沒同步到 API 的寫入）。給了 -Expect
+                    就改看 expectFound。只回傳找到與否，檔案內容不會進 context。（僅 PBIP；PBIX 是二進位檔。）
+      -VerifyOnly   不送 Ctrl+S，只檢查磁碟現況。存檔結果不確定時用這個回頭確認，不要重按。
+
+      範例：
+        Save-PbiModel -Expect '銷售總額'
+        Save-PbiModel -VerifyOnly -Expect '銷售總額'      # 過一會兒再確認一次，不送按鍵
+
       ⚠️ 會把 PBI Desktop 帶到前景，短暫搶走鍵盤焦點（SendKeys 的固有限制）。
-      ⚠️ fileChanged = false 時最多再試一次，不要連按 —— 連續送合成按鍵會被防毒視為可疑行為。
+      ⚠️ 沒存到時最多再試一次，不要連按 —— 連續送合成按鍵會被防毒視為可疑行為。
     #>
-    param([int]$WaitSeconds = 5)
-    Invoke-PbiApi -Path "/api/save" -Method POST -Body @{ WaitSeconds = $WaitSeconds } `
-                  -TimeoutSec ($WaitSeconds + 60)
+    param(
+        [int]$WaitSeconds = 30,
+        [string[]]$Expect,
+        [switch]$VerifyOnly
+    )
+    $body = @{ WaitSeconds = $WaitSeconds }
+    if ($Expect)     { $body['Expect']     = @($Expect) }
+    if ($VerifyOnly) { $body['VerifyOnly'] = $true }
+    Invoke-PbiApi -Path "/api/save" -Method POST -Body $body -TimeoutSec ($WaitSeconds + 60)
 }
 
 function Invoke-PbiRefresh {
@@ -468,8 +570,12 @@ function Invoke-PbiRefresh {
       重新整理資料，讓結構性變更生效：
         建計算表／新增計算項目        → Invoke-PbiRefresh -Table <表>
         建或改關聯線／新增計算資料行  → Invoke-PbiRefresh -RefreshType calculate
-      只改量值不需要。改 M 也不需要 —— 使用者在 Power Query 編輯器「關閉並套用」時
-      Power BI 會自己重整。不指定 -Table 就是整個模型；full 會重抓資料源，大表可能很久。
+        用 API 寫了 M、Desktop 沒出現套用提示 → Invoke-PbiRefresh -Table <表>（full，會重抓資料源）
+      只改量值不需要。使用者自己在 Power Query 編輯器「關閉並套用」時也不需要 —— Power BI 會自己重整。
+      不指定 -Table 就是整個模型；full 會重抓資料源，大表可能很久。
+
+      回應是在重新整理「做完之後」才回來的（message 是「已完成」，elapsedMs 是實際耗時）——
+      收到回應就可以直接驗算，不必等。
     #>
     param(
         [string]$Table,
@@ -562,16 +668,35 @@ function Move-PbiMeasure {
 }
 
 function Add-PbiColumn {
-    <#  新增 DAX 計算資料行。DataType: text/int/decimal/currency/bool/date #>
+    <#
+      新增資料行。DataType: text/int/decimal/currency/bool/date
+
+        -Expression    DAX 計算資料行（同名的計算資料行會被覆寫）
+        -SourceColumn  來源資料行：對應 M 腳本輸出的欄位名稱。用 Set-PbiMQuery 讓查詢多輸出一欄時，
+                       模型不會自己長出那個資料行，要用這個補上。DataType 要和 M 輸出的型別一致。
+
+      兩者擇一。來源資料行加完要 Invoke-PbiRefresh -Table <表> 才有資料；
+      M 其實沒有輸出那個欄位的話重新整理會失敗，屆時用 Remove-PbiColumn 拿掉。
+
+      範例：
+        Add-PbiColumn -Table Sales -Name 毛利 -Expression "Sales[Amount] - Sales[Cost]" -DataType decimal
+        Add-PbiColumn -Table Sales -Name region -SourceColumn region -DataType text
+    #>
     param(
         [Parameter(Mandatory)][string]$Table,
         [Parameter(Mandatory)][string]$Name,
-        [Parameter(Mandatory)][string]$Expression,
+        [string]$Expression,
+        [string]$SourceColumn,
         [ValidateSet('text','int','decimal','currency','bool','date')][string]$DataType = 'text'
     )
-    Invoke-PbiApi -Path "/api/add-column" -Method POST -Body @{
-        TableName = $Table; ColumnName = $Name; Expression = $Expression; DataType = $DataType
+    if ([bool]$Expression -eq [bool]$SourceColumn) {
+        throw "Add-PbiColumn：-Expression（DAX 計算資料行）與 -SourceColumn（M 輸出的來源資料行）請擇一指定。"
     }
+    $body = @{ TableName = $Table; ColumnName = $Name; DataType = $DataType }
+    if ($Expression)   { $body['Expression']   = $Expression }
+    if ($SourceColumn) { $body['SourceColumn'] = $SourceColumn }
+    # 給了 -SourceColumn 時，資料保護啟用下會等使用者回答確認視窗（最多 120 秒）—— 逾時要比那個長
+    Invoke-PbiApi -Path "/api/add-column" -Method POST -Body $body -TimeoutSec 180
 }
 
 function Remove-PbiColumn {
@@ -617,18 +742,23 @@ function Set-PbiMQuery {
     <#
       覆寫資料表的 M 腳本。2026-09-16 恢復（先前誤以為「按套用也解不開」而移除）。
 
-      ⚠️ 這只改「模型」那一份。Power BI Desktop 的 Power Query 文件是另一份 ——
-         寫完 Desktop 會顯示「查詢中有暫止的變更尚未套用」，要請使用者按「套用」。
-         兩份內容不同時，套用有可能是用 Desktop 那份覆蓋回來，所以套用後一定要
-         用 Get-PbiMQuery 確認留下的是這次寫入的版本。
+      ⚠️ 這只改「模型」那一份，而且寫入本身不會重抓資料。Power BI Desktop 的 Power Query
+         文件是另一份。寫完之後 Desktop 的反應有兩種，兩種都實際遇過：
+           · 顯示「查詢中有暫止的變更尚未套用」→ 請使用者按「套用」
+           · 完全沒有提示 → Invoke-PbiRefresh -Table <表名>，新的 M 才會套用到資料上
+         兩份內容不同時，套用有可能是用 Desktop 那份覆蓋回來，所以生效之後一定要
+         確認留下的是這次寫入的版本。
 
       建議流程：
         $before = Get-PbiTableProfile <表名> -Columns <欄位…>   # 基準線
         Get-PbiMQuery <表名> -Label before                      # 留一份 .pq 備份
         Set-PbiMQuery <表名> -Expression $m                      # 寫入
-        # → 請使用者到 Power BI Desktop 按「套用」
-        Get-PbiMQuery <表名> -Show                               # 確認留下的是哪一版
+        # → 問使用者 Desktop 有沒有出現套用提示：有就請他按；沒有就 Invoke-PbiRefresh -Table <表名>
+        (Get-PbiMQuery <表名> -Show) -eq $m                      # True＝留下的是這次寫入的版本（在本機比對，M 不進 context）
         Compare-PbiTableProfile $before (Get-PbiTableProfile <表名> -Columns <欄位…>)
+
+      M 多輸出了新欄位：模型不會自己長出資料行，用 Add-PbiColumn -SourceColumn 補上再重新整理。
+      改的是共用查詢（不是資料表自己的 M）：用 Set-PbiExpression，之後對用到它的表重新整理。
     #>
     param(
         [Parameter(Mandatory, Position=0)][string]$Table,
@@ -638,9 +768,10 @@ function Set-PbiMQuery {
     if ($Expression -notmatch '(?s)^\s*let\b.*\bin\b') {
         throw "M 腳本看起來不是完整的 let ... in，拒絕寫入（不要送片段）。"
     }
+    # 資料保護啟用下會等使用者回答確認視窗（最多 120 秒）—— 逾時要比那個長
     Invoke-PbiApi -Path "/api/update-m" -Method POST -Body @{
         TableName = $Table; Expression = $Expression
-    }
+    } -TimeoutSec 180
 }
 
 # ---------------------------------------------------------------------------
@@ -705,7 +836,8 @@ function New-PbiTable {
     $body = @{ TableName = $Name; Kind = $Kind; IsHidden = $IsHidden }
     if ($Expression) { $body['Expression'] = $Expression }
     if ($Columns)    { $body['Columns']    = $Columns }
-    Invoke-PbiApi -Path "/api/create-table" -Method POST -Body $body
+    # -Kind m 在資料保護啟用下會等使用者回答確認視窗（最多 120 秒）—— 逾時要比那個長
+    Invoke-PbiApi -Path "/api/create-table" -Method POST -Body $body -TimeoutSec 180
 }
 
 function Remove-PbiTable {
@@ -845,7 +977,8 @@ function Set-PbiExpression {
     $body = @{ Name = $Name }
     if ($PSBoundParameters.ContainsKey('Expression'))  { $body['Expression']  = $Expression }
     if ($PSBoundParameters.ContainsKey('Description')) { $body['Description'] = $Description }
-    Invoke-PbiApi -Path "/api/upsert-expression" -Method POST -Body $body
+    # 資料保護啟用下會等使用者回答確認視窗（最多 120 秒）—— 逾時要比那個長
+    Invoke-PbiApi -Path "/api/upsert-expression" -Method POST -Body $body -TimeoutSec 180
 }
 
 function Remove-PbiExpression {
@@ -875,10 +1008,10 @@ function Invoke-PbiBatch {
                 upsert-relationship / delete-relationship / create-table / delete-table /
                 delete-column / set-column-props / rename / upsert-calc-group /
                 upsert-calc-item / delete-calc-item / upsert-role / delete-role /
-                upsert-expression / delete-expression / update-m
+                upsert-expression / delete-expression / update-m / set-model-props
 
-      update-m 也可以放進批次，但寫入只改模型那一份 —— 之後仍要請使用者在
-      Power BI Desktop 按「套用」，並用 Get-PbiMQuery 確認留下的是這次寫入的版本。
+      update-m 也可以放進批次，但寫入只改模型那一份、不會重抓資料 —— 之後仍要讓它生效
+      （Desktop 有提示就請使用者按「套用」，沒有就 Invoke-PbiRefresh -Table），再確認留下的版本。
     #>
     param(
         [Parameter(Mandatory, Position=0)][hashtable[]]$Operations,
@@ -895,16 +1028,37 @@ function Invoke-PbiBatch {
     } -TimeoutSec $TimeoutSec
 }
 
-Write-Host "✅ PBI-Bridge 已載入。可用指令：" -ForegroundColor Green
-Write-Host "   實例  Get-PbiInstances / Use-PbiInstance / Get-PbiInfo   ← 同時開多個 PBI 時先用這個" -ForegroundColor Yellow
-Write-Host "   檢查  Test-PbiBridge / Test-PbiModel" -ForegroundColor Gray
-Write-Host "   讀取  Get-PbiSchema / Get-PbiRelationships / Get-PbiMeasures / Get-PbiRoles / Get-PbiExpressions" -ForegroundColor Gray
-Write-Host "   查詢  Invoke-Dax / Invoke-PbiDmv / Get-PbiModelStats" -ForegroundColor Gray
-Write-Host "   PQ    Get-PbiMQuery / Set-PbiMQuery / Get-PbiTableProfile / Compare-PbiTableProfile" -ForegroundColor Gray
-Write-Host "   安全  New-PbiSnapshot / Get-PbiSnapshots / Restore-PbiSnapshot" -ForegroundColor Gray
-Write-Host "   生效  Save-PbiModel / Invoke-PbiRefresh" -ForegroundColor Gray
-Write-Host "   量值  Set-PbiMeasure / Remove-PbiMeasure / Move-PbiMeasure" -ForegroundColor Gray
-Write-Host "   結構  Add-PbiColumn / Set-PbiColumn / Remove-PbiColumn / New-PbiTable / Remove-PbiTable / Rename-PbiObject" -ForegroundColor Gray
-Write-Host "   關聯  Set-PbiRelationship / Remove-PbiRelationship" -ForegroundColor Gray
-Write-Host "   進階  New-PbiCalcGroup / Set-PbiCalcItem / Set-PbiRole / Set-PbiExpression" -ForegroundColor Gray
-Write-Host "   批次  Invoke-PbiBatch" -ForegroundColor Gray
+function Get-PbiHelp {
+    <#  列出可用指令 #>
+    Write-Host "   實例  Get-PbiInstances / Use-PbiInstance / Get-PbiInfo   ← 同時開多個 PBI 時先用這個" -ForegroundColor Yellow
+    Write-Host "   檢查  Test-PbiBridge / Test-PbiModel / Test-PbiReport" -ForegroundColor Gray
+    Write-Host "   讀取  Get-PbiSchema / Get-PbiRelationships / Get-PbiMeasures / Get-PbiRoles / Get-PbiExpressions" -ForegroundColor Gray
+    Write-Host "   查詢  Invoke-Dax / Invoke-PbiDmv / Get-PbiModelStats" -ForegroundColor Gray
+    Write-Host "   保護  Get-PbiProtection / Set-PbiProtection   ← 每個欄位 AI 讀不讀得到（使用者在儀表板設定）" -ForegroundColor Gray
+    Write-Host "   PQ    Get-PbiMQuery / Set-PbiMQuery / Get-PbiTableProfile / Compare-PbiTableProfile" -ForegroundColor Gray
+    Write-Host "   安全  New-PbiSnapshot / Get-PbiSnapshots / Restore-PbiSnapshot" -ForegroundColor Gray
+    Write-Host "   生效  Save-PbiModel / Invoke-PbiRefresh" -ForegroundColor Gray
+    Write-Host "   量值  Set-PbiMeasure / Remove-PbiMeasure / Move-PbiMeasure" -ForegroundColor Gray
+    Write-Host "   結構  Add-PbiColumn / Set-PbiColumn / Remove-PbiColumn / New-PbiTable / Remove-PbiTable / Rename-PbiObject" -ForegroundColor Gray
+    Write-Host "   關聯  Set-PbiRelationship / Remove-PbiRelationship" -ForegroundColor Gray
+    Write-Host "   進階  New-PbiCalcGroup / Set-PbiCalcItem / Remove-PbiCalcItem / Set-PbiRole / Remove-PbiRole" -ForegroundColor Gray
+    Write-Host "         Set-PbiExpression / Remove-PbiExpression / Get-PbiModelProps / Set-PbiModelProps" -ForegroundColor Gray
+    Write-Host "   批次  Invoke-PbiBatch" -ForegroundColor Gray
+}
+
+# 載入訊息。指令清單對人是提示；對 AI 代理則是每一次工具呼叫都要重付一次的十幾行 context
+# （代理的 shell 狀態不跨呼叫，每次都得重新載入本檔）。所以：
+#   · 互動式視窗        → 完整清單（和以前一樣）
+#   · 非互動、或被別的腳本載入 → 只印一行
+#   · $env:PBI_BRIDGE_QUIET = '1' → 什麼都不印
+if ($env:PBI_BRIDGE_QUIET -ne '1') {
+    $pbiBrief = [bool]$MyInvocation.ScriptName -or
+                ([Environment]::GetCommandLineArgs() -contains '-NonInteractive')
+    if ($pbiBrief) {
+        Write-Host "✅ PBI-Bridge 已載入（指令清單：Get-PbiHelp）" -ForegroundColor Green
+    } else {
+        Write-Host "✅ PBI-Bridge 已載入。可用指令：" -ForegroundColor Green
+        Get-PbiHelp
+    }
+    Remove-Variable pbiBrief
+}

@@ -41,7 +41,8 @@
                 --text: #FAF9F5; --text-2: #E3E1D8; --muted: #A3A097;
                 --accent: #D97757; --accent-strong: #E8937A; --accent-soft: rgba(217, 119, 87, 0.16); --on-accent: #FFFFFF;
                 --code-bg: #1F1E1D; --code-text: #E3E1D8;
-                --ok: #8DB38F; --danger: #E3907F; --danger-soft: rgba(227, 144, 127, 0.14);
+                --ok: #8DB38F;
+                --danger: #E3907F; --danger-soft: rgba(227, 144, 127, 0.14);
                 --shadow: none;
                 color-scheme: dark;
             }
@@ -52,7 +53,8 @@
             --text: #FAF9F5; --text-2: #E3E1D8; --muted: #A3A097;
             --accent: #D97757; --accent-strong: #E8937A; --accent-soft: rgba(217, 119, 87, 0.16); --on-accent: #FFFFFF;
             --code-bg: #1F1E1D; --code-text: #E3E1D8;
-            --ok: #8DB38F; --danger: #E3907F; --danger-soft: rgba(227, 144, 127, 0.14);
+            --ok: #8DB38F;
+            --danger: #E3907F; --danger-soft: rgba(227, 144, 127, 0.14);
             --shadow: none;
             color-scheme: dark;
         }
@@ -103,7 +105,7 @@
             border: 0; outline: 0; background: transparent; color: var(--text); font: inherit; min-width: 0;
         }
         .field select option { background: var(--surface); color: var(--text); }
-        .search-field input { width: 220px; }
+        .search-field input { width: 170px; }      /* 再寬的話，1280 寬的螢幕上頂列會折成兩行 */
         .select-field select { max-width: 260px; cursor: pointer; }
         kbd {
             font: 11px/1 var(--mono); padding: 3px 5px; border-radius: 5px;
@@ -119,7 +121,8 @@
         .btn:focus-visible, .tab:focus-visible, .table-item:focus-visible, .copy:focus-visible {
             outline: 2px solid var(--accent); outline-offset: 2px;
         }
-        .btn:disabled { opacity: 0.6; cursor: progress; }
+        .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+        #refreshBtn:disabled { cursor: progress; }
         .btn-primary { background: var(--accent); color: var(--on-accent); }
         .btn-primary:hover:not(:disabled) { background: var(--accent-strong); }
         .btn-ghost { background: transparent; color: var(--text-2); border-color: var(--border); }
@@ -238,18 +241,178 @@
         .detail { margin-top: 14px; font: 12px/1.5 var(--mono); color: var(--muted); word-break: break-word; }
 
         #toast {
-            position: fixed; left: 50%; bottom: 24px; transform: translate(-50%, 16px); opacity: 0; pointer-events: none;
-            display: flex; align-items: center; gap: 8px; max-width: calc(100vw - 32px);
-            padding: 10px 16px; border-radius: 999px; background: var(--text); color: var(--bg); font-size: 13px;
+            position: fixed; left: 16px; right: 16px; bottom: 24px; margin: 0 auto; width: fit-content; z-index: 6;
+            transform: translateY(16px); opacity: 0; pointer-events: none;
+            display: flex; align-items: center; gap: 8px; max-width: min(720px, calc(100vw - 32px));
+            padding: 10px 16px; border-radius: 18px; background: var(--text); color: var(--bg); font-size: 13px;
             transition: opacity 0.18s, transform 0.18s;
         }
-        #toast.show { opacity: 1; transform: translate(-50%, 0); }
-        #toast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        #toast.show { opacity: 1; transform: translateY(0); }
+        #toast span { min-width: 0; overflow-wrap: anywhere; }
+
+        /* ── 檢視切換（模型結構 / 資料保護）──────────────── */
+        .viewswitch {
+            display: inline-flex; padding: 3px; gap: 2px; margin-left: 12px;
+            background: var(--surface-2); border: 1px solid var(--border); border-radius: 11px;
+        }
+        .vs {
+            display: inline-flex; align-items: center; gap: 7px; height: 30px; padding: 0 12px;
+            border: 0; border-radius: 8px; background: transparent; color: var(--muted);
+            font: 500 13.5px/1 var(--sans); cursor: pointer; white-space: nowrap;
+        }
+        .vs:hover { color: var(--text); }
+        .vs.active { background: var(--surface); color: var(--text); box-shadow: var(--shadow); }
+        .vs.active svg.i { color: var(--accent); }
+        .vs:focus-visible, .seg button:focus-visible, .chip:focus-visible, .ptable > summary:focus-visible,
+        .guide > summary:focus-visible, .hint:focus-visible, .skip:focus-visible {
+            outline: 2px solid var(--accent); outline-offset: 2px;
+        }
+
+        /* ── 資料保護 ─────────────────────────────────────── */
+        /* 顏色只有三個意思：反白＝受限、陶土色＝等你處理（建議、未儲存）、紅＝放寬與錯誤。
+           「開放」不上色 —— 它是九成的列；而且綠色在權限表格裡會被讀成「允許」，在這裡意思正好相反。 */
+        .guide { margin-bottom: 16px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+        .guide > summary { padding: 11px 14px; cursor: pointer; font-weight: 500; color: var(--text-2); list-style-position: inside; }
+        .guide[open] > summary { border-bottom: 1px solid var(--border); }
+        .levels { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; padding: 14px 14px 4px; }
+        .level {
+            padding: 12px 14px; background: var(--surface-2); border: 1px solid var(--border);
+            border-top: 3px solid var(--text); border-radius: 10px;
+        }
+        .level.open { border-top-color: var(--border-strong); }
+        .level h3 { margin: 0 0 6px; font: 600 14px/1.3 var(--sans); }
+        .level p { margin: 0 0 4px; font-size: 12.5px; color: var(--text-2); }
+        .level .eg {
+            margin: 6px 0; padding: 5px 8px; border-radius: 6px; background: var(--surface); border: 1px solid var(--border);
+            font: 12px/1.5 var(--mono); color: var(--text-2); word-break: break-word;
+        }
+        .level .fit { font-size: 12px; color: var(--muted); }
+        .guide h4 { margin: 12px 18px 0; font: 600 13px/1.4 var(--sans); color: var(--text-2); }
+        .guide ol { margin: 0; padding: 6px 18px 6px 38px; color: var(--text-2); }
+        .guide li { padding: 3px 0; }
+        .guide .fine { padding: 4px 18px 14px; margin: 0; font-size: 12.5px; color: var(--muted); }
+
+        .notice.warn { background: var(--danger-soft); border-color: transparent; }
+        .notice.warn svg.i { color: var(--danger); }
+        .notice { flex-wrap: wrap; }
+        .notice .grow { flex: 1 1 260px; min-width: 0; }
+        .notice .btn { flex: none; }
+        .page.prot { padding-bottom: 150px; }       /* 底下浮著儲存列，最後幾列要捲得上來 */
+
+        .prot-toolbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 4px 0 10px; }
+        .chip {
+            display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; cursor: pointer;
+            border: 1px solid var(--border); border-radius: 999px; background: var(--surface); color: var(--text-2);
+            font: 500 13px/1 var(--sans);
+        }
+        .chip:hover { background: var(--hover); }
+        .chip.active { background: var(--text); color: var(--bg); border-color: var(--text); }
+        .chip b { font-weight: 600; font-variant-numeric: tabular-nums; }
+        .chip.todo:not(.active) { border-color: var(--accent); color: var(--accent-strong); }
+
+        .bulk {
+            display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin: 0 0 14px; padding: 8px 12px;
+            border: 1px dashed var(--border-strong); border-radius: 10px; font-size: 13px; color: var(--text-2);
+        }
+        .bulk .fine { color: var(--muted); font-size: 12px; }
+        .bulk.muted { border-style: solid; border-color: var(--border); color: var(--muted); font-size: 12.5px; }
+
+        .ptable { margin-bottom: 12px; }
+        .ptable > summary {
+            display: flex; align-items: center; gap: 10px; padding: 12px 16px; cursor: pointer; list-style: none;
+        }
+        .ptable > summary::-webkit-details-marker { display: none; }
+        .ptable > summary .caret { color: var(--muted); transition: transform 0.12s; }
+        .ptable[open] > summary .caret { transform: rotate(90deg); }
+        .ptable[open] > summary { border-bottom: 1px solid var(--border); }
+        .ptable .tname { font-family: var(--serif); font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .ptable .tcount { font-size: 12px; color: var(--muted); white-space: nowrap; }
+        .ptable .tcount .r { color: var(--text); font-weight: 600; }
+        .ptable .tcount .s { color: var(--accent-strong); }
+        .ptable .grow { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px; }
+
+        .prow { display: flex; align-items: center; gap: 12px; padding: 7px 12px; border-radius: 8px; }
+        .prow.restricted { background: var(--surface-2); }
+        .prow:hover { background: var(--hover); }
+        .prow.hit .row-name { text-decoration: underline; text-decoration-color: var(--accent); text-underline-offset: 3px; }
+        .prow.dirty { box-shadow: inset 3px 0 0 var(--accent); }
+        .prow .lock { width: 14px; height: 14px; color: var(--text-2); }
+        .prow .src { font: 12px/1.5 var(--sans); color: var(--muted); }
+        .prow .src .loosen { color: var(--danger); font-weight: 500; }
+        .hintwrap { flex: none; display: inline-flex; align-items: center; gap: 4px; }
+        .hint {
+            display: inline-flex; align-items: center; height: 26px; padding: 0 10px; cursor: pointer;
+            border: 1px solid transparent; border-radius: 999px; background: var(--accent-soft); color: var(--accent-strong);
+            font: 500 12px/1 var(--sans); white-space: nowrap;
+        }
+        .hint:hover { border-color: var(--accent); }
+        .skip {
+            height: 26px; padding: 0 6px; border: 0; background: transparent; color: var(--muted); cursor: pointer;
+            font: 12px/1 var(--sans); white-space: nowrap; text-decoration: underline; text-underline-offset: 3px;
+        }
+        .skip:hover { color: var(--text); }
+        .samehint {
+            display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 2px 0 6px 12px; padding: 7px 12px;
+            border-radius: 8px; background: var(--accent-soft); color: var(--text-2); font-size: 12.5px;
+        }
+        .samehint .grow { flex: 1; min-width: 200px; }
+
+        .seg { display: inline-flex; flex: none; border: 1px solid var(--border-strong); border-radius: 9px; overflow: hidden; background: var(--surface); }
+        .seg button {
+            height: 28px; padding: 0 10px; border: 0; border-left: 1px solid var(--border); background: transparent;
+            color: var(--muted); font: 500 12.5px/1 var(--sans); cursor: pointer; white-space: nowrap;
+        }
+        .seg button:first-child { border-left: 0; }
+        .seg button:hover:not(:disabled):not(.on) { background: var(--hover); color: var(--text); }
+        .seg button.on { background: var(--text); color: var(--bg); font-weight: 600; }
+        .seg button.on[data-level="open"] { background: var(--surface-2); color: var(--text); }
+        .seg button:disabled:not(.on) { opacity: 0.35; cursor: not-allowed; }
+
+        .savebar {
+            /* 用 left/right + margin:auto 置中，不用 left:50% —— 後者會把寬度卡在半個畫面，長一點的說明就被擠成好幾行 */
+            position: fixed; left: 16px; right: 16px; bottom: 20px; margin: 0 auto; width: fit-content; z-index: 5;
+            display: flex; align-items: center; gap: 10px; max-width: min(980px, calc(100vw - 32px));
+            padding: 10px 12px 10px 18px; border-radius: 14px; background: var(--surface);
+            border: 1px solid var(--border-strong); box-shadow: 0 8px 30px rgba(20, 20, 19, 0.18);
+        }
+        .savebar .msg { font-size: 13.5px; color: var(--text-2); min-width: 0; }
+        .savebar .msg b { color: var(--text); }
+        .savebar .msg .loosen { display: block; font-size: 12.5px; color: var(--danger); max-width: 520px; }
+        .savebar .btn { flex: none; }
+        body.saving .main, body.saving .sidebar { pointer-events: none; opacity: 0.6; }
+
+        .waiting {
+            position: fixed; inset: 0; z-index: 10; display: grid; place-items: center;
+            background: rgba(20, 20, 19, 0.45);
+        }
+        .waiting .box {
+            width: min(520px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+            padding: 22px 24px; border-radius: 16px; background: var(--surface); border: 1px solid var(--border);
+        }
+        .waiting .wicon { color: var(--accent); }
+        .waiting .wicon svg.i { width: 26px; height: 26px; }
+        .waiting h2 { font-family: var(--serif); font-size: 20px; margin: 8px 0 6px; }
+        .waiting p { margin: 0 0 10px; color: var(--text-2); font-size: 13.5px; }
+        .waiting .wl-title { margin-bottom: 6px; font-weight: 500; color: var(--text); }
+        .wlist {
+            list-style: none; margin: 0 0 12px; padding: 8px 12px; max-height: 300px; overflow-y: auto;   /* 12 行要一次看得完 */
+            background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+            font: 12.5px/1.7 var(--mono); color: var(--code-text); word-break: break-word;
+        }
+        .waiting .wcount { margin: 0; color: var(--muted); }
+        .waiting .wcount b { color: var(--text); font-variant-numeric: tabular-nums; }
+
+        .vs-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); flex: none; }
 
         ::-webkit-scrollbar { width: 10px; height: 10px; }
         ::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 10px; border: 3px solid var(--bg); }
         ::-webkit-scrollbar-track { background: transparent; }
 
+        /* 欄名、建議與四格按鈕排不進一行的寬度：按鈕換到欄名下面，不要把欄名擠到只剩幾個字 */
+        @media (max-width: 1100px) {
+            .prow { flex-wrap: wrap; }
+            .prow .row-main { flex: 1 1 100%; }
+        }
         @media (max-width: 900px) {
             body { overflow: auto; height: auto; }
             .topbar { padding: 12px 16px; }
@@ -264,6 +427,13 @@
             .grid { grid-template-columns: 1fr; }
             .page { padding: 24px 16px 48px; }
             .page-head h1 { font-size: 24px; }
+            .brand { flex-wrap: wrap; }
+            .viewswitch { margin-left: 0; }
+            .levels { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+            .prow { flex-wrap: wrap; }
+            .prow .row-main { flex: 1 1 100%; }
+            .seg { max-width: 100%; overflow-x: auto; }
+            .savebar { width: auto; flex-wrap: wrap; }
         }
     </style>
 </head>
@@ -274,7 +444,11 @@
             <span class="mark"><i data-icon="bridge"></i></span>
             <div>
                 <div class="brand-name">PBI AI Bridge</div>
-                <div class="brand-sub">模型結構瀏覽</div>
+                <div class="brand-sub" id="brandSub">模型結構瀏覽</div>
+            </div>
+            <div class="viewswitch" role="tablist" aria-label="切換檢視">
+                <button class="vs active" type="button" role="tab" data-view="model"><i data-icon="table"></i>模型結構</button>
+                <button class="vs" type="button" role="tab" data-view="protection"><i data-icon="shield"></i>資料保護<span class="vs-dot" id="protDot" hidden></span></button>
             </div>
         </div>
         <div class="toolbar">
@@ -303,6 +477,24 @@
         <main id="mainContent" class="main"></main>
     </div>
 
+    <div id="saveBar" class="savebar" hidden>
+        <div class="msg" id="saveMsg"></div>
+        <button id="reviewBtn" class="btn btn-ghost btn-sm" type="button" title="只列出還沒儲存的欄位">檢視</button>
+        <button id="discardBtn" class="btn btn-ghost btn-sm" type="button">放棄變更</button>
+        <button id="saveBtn" class="btn btn-primary btn-sm" type="button">儲存</button>
+    </div>
+    <div id="waiting" class="waiting" hidden role="alertdialog" aria-live="assertive" aria-labelledby="waitTitle">
+        <div class="box">
+            <div class="wicon"><i data-icon="shield"></i></div>
+            <h2 id="waitTitle">請到 Windows 跳出的確認視窗回答</h2>
+            <p id="waitWhere"></p>
+            <div id="waitListWrap">
+                <p class="wl-title">視窗裡應該只有這幾項，請逐行對照：</p>
+                <ul id="waitList" class="wlist"></ul>
+            </div>
+            <p class="wcount" id="waitCount">剩 <b id="waitLeft">120</b> 秒。沒有回答會當成「否」，不會有任何變更。</p>
+        </div>
+    </div>
     <div id="toast" role="status" aria-live="polite"></div>
 
     <script>
@@ -321,7 +513,10 @@
             copy:    '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V6a2 2 0 0 1 2-2h8"/>',
             check:   '<path d="m5 12.5 4.5 4.5L19 7.5"/>',
             shield:  '<path d="M12 3 4.5 6v5.5c0 4.4 3.1 8.2 7.5 9.5 4.4-1.3 7.5-5.1 7.5-9.5V6z"/>',
+            lock:    '<rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/>',
             plug:    '<path d="M9 3v4M15 3v4"/><path d="M6 7h12v3a6 6 0 0 1-12 0z"/><path d="M12 16v5"/>',
+            chevron: '<path d="m9 6 6 6-6 6"/>',
+            alert:   '<path d="M12 4 3 20h18z"/><path d="M12 10v5M12 17.5v.5"/>',
             sun:     '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>',
             moon:    '<path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/>',
         };
@@ -335,6 +530,19 @@
         let activeTable = null;
         let exportTime = null;
         let activeTab = 'structure';
+
+        // 目前的檢視：'model'（模型結構）或 'protection'（資料保護）。兩者共用實例選擇、搜尋與深淺色。
+        let view = 'model';
+        let prot = null;                 // /api/protection 的回應（整理過）
+        const pending = new Map();       // 還沒儲存的變更：表 + SEP + 欄 → 等級
+        let protFilter = 'all';
+        let protNotice = null;           // 頁面頂端的一則訊息：{ tone: 'warn' | 'ok', text }
+        let saving = false;              // 正在送出（或正在等確認視窗）：這段時間不接受任何點擊
+        let retryAt = 0;                 // 剛被拒絕或逾時：這個時間以前伺服器不會再跳確認視窗
+        let guideOpen = null;            // 說明區塊：使用者手動開關過就照他的，否則沒設定過才展開
+        let loadGen = 0;                 // 每次重新讀模型加一；晚到的舊回應靠它認出來丟掉
+        let autoOpened = new WeakSet();  // 這次重畫時本來就展開的區塊（它們送出的 toggle 不是使用者點的）
+        const tableOpen = new Map();     // 使用者手動展開／收合過的資料表
 
         // ── 深淺色：預設跟隨系統，手動切換後記在這台瀏覽器 ─────────────────
         const THEME_KEY = 'pbi-bridge-theme';
@@ -374,10 +582,25 @@
             document.querySelectorAll('i[data-icon]').forEach(el => { el.outerHTML = svg(el.dataset.icon); });
             updateThemeButton();
             $('themeBtn').addEventListener('click', toggleTheme);
-            $('refreshBtn').addEventListener('click', fetchSchema);
-            $('instancePicker').addEventListener('change', fetchSchema);
-            $('searchInput').addEventListener('input', handleSearch);
+            $('refreshBtn').addEventListener('click', () => { if (okToDropPending()) fetchSchema(); });
+            $('instancePicker').addEventListener('focus', e => { e.target.dataset.prev = e.target.value; });
+            $('instancePicker').addEventListener('change', e => {
+                if (okToDropPending()) fetchSchema();
+                else e.target.value = e.target.dataset.prev || '';     // 不離開：把選單改回原本那個
+            });
+            // 資料保護檢視每次搜尋都要重排整張清單，等使用者停手再做
+            let searchTimer;
+            $('searchInput').addEventListener('input', () => {
+                clearTimeout(searchTimer);
+                searchTimer = setTimeout(handleSearch, view === 'protection' ? 150 : 0);
+            });
             $('mainContent').addEventListener('click', onMainClick);
+            $('mainContent').addEventListener('toggle', onProtToggle, true);   // toggle 不會往上冒泡，要在捕獲階段接
+            document.querySelectorAll('.vs').forEach(b => b.addEventListener('click', () => setView(b.dataset.view)));
+            $('saveBtn').addEventListener('click', saveProtection);
+            $('discardBtn').addEventListener('click', () => { pending.clear(); protNotice = null; handleSearch(); });
+            $('reviewBtn').addEventListener('click', () => { protFilter = 'changed'; tableOpen.clear(); renderProtection(); });
+            window.addEventListener('beforeunload', e => { if (pending.size) { e.preventDefault(); e.returnValue = ''; } });
             document.addEventListener('keydown', e => {
                 const typing = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement?.tagName);
                 if (e.key === '/' && !typing) { e.preventDefault(); $('searchInput').focus(); }
@@ -413,7 +636,10 @@
                 picker.append(new Option('沒有執行中的 Power BI', ''));
                 return list;
             }
-            list.forEach(i => picker.append(new Option(`${i.fileName || '（未開啟檔案）'} · ${i.kind} · :${i.port}`, i.port)));
+            // 服務只能從 Power BI 的啟動參數得知檔案路徑。先開 Power BI 再從裡面選檔案的話拿不到路徑，
+            // 但還是認得出名字（視窗標題）—— 照樣可以瀏覽、設定資料保護
+            const kindLabel = i => (i.kind === 'Unknown' ? '路徑不明' : i.kind);
+            list.forEach(i => picker.append(new Option(`${i.fileName || '（未命名）'} · ${kindLabel(i)} · :${i.port}`, i.port)));
             // 盡量保留原本的選擇，避免重新掃描後跳回第一個
             if (previous && list.some(i => String(i.port) === previous)) picker.value = previous;
             return list;
@@ -425,13 +651,20 @@
         }
 
         async function fetchSchema() {
+            const gen = ++loadGen;
             setLoading(true);
+            // 換模型或重新掃描：上一份模型還沒儲存的變更到這裡為止（呼叫端已經問過要不要放棄）。
+            // 現在就清掉，不等新模型讀完 —— 還在讀、或讀取失敗的時候，儲存列上不能還掛著上一份模型的變更
+            prot = null; pending.clear(); protNotice = null; tableOpen.clear(); guideOpen = null;
+            $('saveBar').hidden = true;
+            updateProtDot();
             $('sidebar').replaceChildren();
             $('tableCount').textContent = '';
             renderState({ icon: 'refresh', spin: true, title: '正在讀取模型結構', text: '從執行中的 Power BI 取得資料表、欄位與量值…' });
             try {
                 // 每次掃描前先更新實例清單 —— 使用者可能剛開了新檔案，或關掉了舊的
                 const list = await refreshInstances();
+                if (gen !== loadGen) return;         // 等回應的時候使用者又按了一次：讓比較新的那一次接手
                 if (list.length === 0) {
                     tables = []; activeTable = null;
                     renderState({ icon: 'plug', title: '沒有偵測到 Power BI', text: '請先開啟一份 .pbix 或 .pbip，再按「重新掃描」。服務不需要重開。' });
@@ -440,13 +673,15 @@
                 const res = await fetch('/api/schema', { headers: apiHeaders() });
                 if (!res.ok) throw new Error(await readError(res));
                 const data = await res.json();
+                if (gen !== loadGen) return;
                 tables = pick(data, 'tables', 'Tables') || [];
                 exportTime = pick(data, 'exportTime', 'ExportTime');
                 activeTable = null;
-                handleSearch();
-                if (tables.length > 0) selectTable(tables[0]);
-                else renderState({ icon: 'table', title: '這份模型沒有資料表', text: '' });
+                if (tables.length === 0) { handleSearch(); renderState({ icon: 'table', title: '這份模型沒有資料表', text: '' }); }
+                else if (view === 'protection') await loadProtection();
+                else { handleSearch(); selectTable(tables[0]); loadProtectionQuiet(); }
             } catch (e) {
+                if (gen !== loadGen) return;
                 console.error(e);
                 if ($('instancePicker').options.length <= 1 && !$('instancePicker').value) {
                     $('instancePicker').innerHTML = '<option value="">無法取得清單</option>';
@@ -461,7 +696,7 @@
                     detail: e.message,
                 });
             } finally {
-                setLoading(false);
+                if (gen === loadGen) setLoading(false);
             }
         }
 
@@ -500,17 +735,25 @@
                 nav.innerHTML = `<div class="empty-row">${q ? `沒有符合「${esc(q)}」的資料表、欄位或量值` : ''}</div>`;
                 return;
             }
+            const stats = view === 'protection' && prot ? protTableStats() : null;
             for (const t of list) {
                 const hits = countMatches(t, q);
                 const btn = document.createElement('button');
                 btn.type = 'button';
                 btn.className = 'table-item' + (t === activeTable ? ' active' : '');
                 btn.title = tableName(t);
+                const s = stats?.get(tableName(t));
+                // 資料保護檢視：左側直接看得到每張表有幾欄受限
+                const meta = s
+                    ? (s.restricted ? `受限 ${s.restricted} · 開放 ${s.open}` : s.open ? `${s.open} 欄全部開放` : '沒有欄位')
+                    : `${columnsOf(t).length} 欄位 · ${measuresOf(t).length} 量值`;
                 btn.innerHTML = `
-                    <span class="name">${svg('table')}<span class="t">${esc(tableName(t))}</span>
+                    <span class="name">${svg(s && s.restricted ? 'lock' : 'table')}<span class="t">${esc(tableName(t))}</span>
                         ${pick(t, 'isHidden', 'IsHidden') ? '<span class="badge">隱藏</span>' : ''}
+                        ${s && s.suggested ? `<span class="badge badge-match">${s.suggested} 建議</span>` : ''}
+                        ${s && s.dirty ? '<span class="vs-dot" title="有還沒儲存的變更"></span>' : ''}
                         ${hits ? `<span class="badge badge-match">${hits} 符合</span>` : ''}</span>
-                    <span class="meta">${columnsOf(t).length} 欄位 · ${measuresOf(t).length} 量值</span>`;
+                    <span class="meta">${esc(meta)}</span>`;
                 btn.addEventListener('click', () => selectTable(t));
                 btn._table = t;
                 nav.append(btn);
@@ -520,6 +763,7 @@
         function selectTable(t) {
             activeTable = t;
             document.querySelectorAll('.table-item').forEach(el => el.classList.toggle('active', el._table === t));
+            if (view === 'protection') { scrollToProtTable(tableName(t)); return; }
             renderTableDetails(t);
             $('mainContent').scrollTop = 0;
         }
@@ -605,6 +849,7 @@
         }
 
         function onMainClick(e) {
+            if (view === 'protection') { onProtClick(e); return; }
             const tab = e.target.closest('[data-tab]');
             if (tab) {
                 activeTab = tab.dataset.tab;
@@ -624,8 +869,711 @@
                 ? tables.filter(t => tableName(t).toLowerCase().includes(q) || countMatches(t, q) > 0)
                 : tables;
             renderSidebar(list, q);
+            if (view === 'protection') { if (prot) renderProtection(); return; }
             if (q.length >= 2 && list.length === 1 && list[0] !== activeTable) selectTable(list[0]);
             else if (activeTable) renderTableDetails(activeTable);   // 更新符合項目的標示
+        }
+
+        // ── 資料保護 ────────────────────────────────────────────────────
+        // 這裡只負責顯示與收集變更。規則由伺服器執行 —— 尤其「放寬」：按下儲存後，
+        // 服務會自己跳出 Windows 確認視窗，使用者在那裡按「是」才生效，這個頁面（或任何拿得到金鑰的程式）繞不過去。
+        const LEVELS = [
+            { key: 'open',          label: '開放',     tip: 'AI 可以直接讀內容' },
+            { key: 'pseudonym',     label: '換成代號', tip: 'AI 可以分組統計，但看到的是代號，不是真名' },
+            { key: 'countOnly',     label: '只能計數', tip: 'AI 只能數有幾個，不能列出、不能分組' },
+            { key: 'aggregateOnly', label: '只能彙總', tip: 'AI 只能拿加總、平均、最大最小，不能一筆一筆看' },
+        ];
+        const LEVEL_LABEL = Object.fromEntries(LEVELS.map(l => [l.key, l.label]));
+        const SEP = '\u0001';
+        const keyOf = (t, c) => t + SEP + c;
+        const TYPE_LABEL = { String: '文字', Int64: '數字', Double: '數字', Decimal: '數字', DateTime: '日期', Boolean: '是／否' };
+        // 和伺服器同一條規則：改成「只能計數」、或原本就是開放，都不算放寬
+        const isLoosening = (from, to) => to !== from && to !== 'countOnly' && from !== 'open';
+        const levelNow = (t, c) => pending.get(keyOf(t, c.name)) ?? c.level;
+        // 這一欄現在是不是掛著一個還沒處理的建議（套用或略過之後就不算）
+        const hasOpenHint = (t, c) => !!c.suggested && c.level === 'open'
+            && !pending.has(keyOf(t, c.name)) && !local.dismissed.has(keyOf(t, c.name));
+        // 和伺服器比對欄名的方式一致：忽略大小寫、空白、底線、連字號
+        const normName = s => s.toLowerCase().replace(/[ _-]/g, '');
+
+        // 只屬於這個瀏覽器的記號：哪些建議略過了、這份模型是不是「看過了，不用改」。
+        // 刻意不存到伺服器 —— 伺服器分不出送請求的是你還是 AI；存在那裡的話，AI 可以替你把建議全部略過。
+        let local = { reviewed: false, dismissed: new Set() };
+        const localKey = () => 'pbi-bridge-prot:' + prot.modelId;
+        function loadLocal() {
+            local = { reviewed: false, dismissed: new Set() };
+            if (!prot?.modelId) return;
+            try {
+                const o = JSON.parse(localStorage.getItem(localKey()) || '{}');
+                local = { reviewed: !!o.reviewed, dismissed: new Set(Array.isArray(o.dismissed) ? o.dismissed : []) };
+            } catch (e) { }
+        }
+        function saveLocal() {
+            if (!prot?.modelId) return;
+            try { localStorage.setItem(localKey(), JSON.stringify({ reviewed: local.reviewed, dismissed: [...local.dismissed] })); } catch (e) { }
+        }
+        function setProt(p) { prot = p; loadLocal(); }
+        // 確認視窗裡每一行的寫法（和伺服器的一模一樣，使用者才能逐行對照）
+        const changeLine = (t, c, from, to) => `'${t}'[${c}]：${LEVEL_LABEL[from] || from} → ${LEVEL_LABEL[to] || to}`;
+
+        function okToDropPending() {
+            if (pending.size === 0) return true;
+            return confirm(`資料保護有 ${pending.size} 項還沒儲存。要放棄嗎？`);
+        }
+
+        function setView(v) {
+            if (v === view) return;
+            view = v;                                        // 切換檢視不會丟掉還沒儲存的變更
+            document.querySelectorAll('.vs').forEach(b => b.classList.toggle('active', b.dataset.view === v));
+            $('brandSub').textContent = v === 'protection' ? 'AI 能讀什麼' : '模型結構瀏覽';
+            $('searchInput').placeholder = v === 'protection' ? '搜尋欄位，例如：客戶、金額' : '搜尋資料表、欄位或量值';
+            $('saveBar').hidden = true;
+            if (tables.length === 0) return;                 // 還沒讀到模型：維持目前的狀態畫面
+            if (v === 'protection') { if (prot) handleSearch(); else loadProtection(); }
+            else { handleSearch(); selectTable(activeTable || tables[0]); }
+        }
+
+        function normalizeProt(d) {
+            const g = (o, k) => pick(o, k, k[0].toUpperCase() + k.slice(1));
+            return {
+                enabled: !!g(d, 'enabled'), file: g(d, 'file') || '', canSave: !!g(d, 'canSave'),
+                configured: !!g(d, 'configured'), problem: g(d, 'problem') || '', savedAt: g(d, 'savedAt') || '',
+                modelId: g(d, 'modelId') || '', pathKnown: g(d, 'pathKnown') !== false, inheritedFrom: g(d, 'inheritedFrom') || '',
+                maxLoosen: Number(g(d, 'maxLoosenPerConfirm')) || 12,
+                confirmTimeout: Number(g(d, 'confirmTimeoutSeconds')) || 120,
+                limits: g(d, 'limits') || {},
+                stale: (g(d, 'stale') || []).map(s => ({ table: g(s, 'table'), column: g(s, 'column'), level: g(s, 'level') })),
+                tables: (g(d, 'tables') || []).map(t => ({
+                    name: g(t, 'name') || '', isHidden: !!g(t, 'isHidden'),
+                    columns: (g(t, 'columns') || []).map(c => ({
+                        name: g(c, 'name') || '', dataType: g(c, 'dataType') || '', numeric: !!g(c, 'numeric'),
+                        isHidden: !!g(c, 'isHidden'), level: g(c, 'level') || 'open', source: g(c, 'source') || 'default',
+                        rule: g(c, 'rule') || '', suggested: g(c, 'suggested') || '', suggestedWhy: g(c, 'suggestedWhy') || '',
+                    })),
+                })),
+            };
+        }
+
+        async function fetchProtection() {
+            const res = await fetch('/api/protection', { headers: apiHeaders() });
+            if (res.status === 404) throw new Error('執行中的服務是舊版，還沒有這個功能。請關掉黑窗，重新雙擊「🚀啟動PBI終極儀表板.bat」。');
+            if (!res.ok) throw new Error(await readError(res));
+            return normalizeProt(await res.json());
+        }
+
+        async function loadProtection() {
+            $('saveBar').hidden = true;
+            renderState({ icon: 'refresh', spin: true, title: '正在讀取資料保護設定', text: '' });
+            const gen = loadGen;
+            try {
+                const p = await fetchProtection();
+                if (gen !== loadGen) return;         // 等回應的時候使用者換了模型：這份已經不是現在要看的
+                setProt(p);
+                handleSearch();                      // 會連帶畫出側欄與主畫面
+            } catch (e) {
+                if (gen !== loadGen) return;
+                console.error(e);
+                prot = null;
+                renderState({ tone: 'error', icon: 'shield', title: '無法讀取資料保護設定', detail: e.message });
+            }
+        }
+
+        // 在「模型結構」檢視先悄悄讀一次：分頁上的小圓點才知道這份模型設定過沒有
+        function loadProtectionQuiet() {
+            const gen = loadGen;
+            fetchProtection().then(p => {
+                if (gen !== loadGen || prot) return;
+                setProt(p);
+                updateProtDot();
+                if (view === 'protection') handleSearch();
+            }).catch(() => { });
+        }
+
+        function updateProtDot() {
+            const dot = $('protDot');
+            let why = '';
+            if (pending.size > 0) why = `有 ${pending.size} 項還沒儲存`;
+            else if (prot && prot.enabled && prot.canSave && !prot.problem) {
+                let hints = 0;
+                for (const t of prot.tables) for (const c of t.columns) if (hasOpenHint(t.name, c)) hints++;
+                if (hints > 0) why = `有 ${hints} 個欄位建議設成受限`;
+                else if (!prot.configured && !local.reviewed) why = '這份模型還沒設定過';
+            }
+            dot.hidden = !why;
+            dot.title = why;
+        }
+
+        // 設定檔讀不出來時要先重設，報表還沒存檔時沒有地方記 —— 這兩種狀況都不能改
+        const canEdit = () => prot.canSave && !prot.problem;
+        function findProtTable(name) { return prot.tables.find(t => t.name === name); }
+        function findCol(tName, cName) { return findProtTable(tName)?.columns.find(c => c.name === cName); }
+
+        function protTableStats() {
+            const m = new Map();
+            for (const t of prot.tables) {
+                const s = { open: 0, restricted: 0, suggested: 0, dirty: 0 };
+                for (const c of t.columns) {
+                    if (levelNow(t.name, c) === 'open') s.open++; else s.restricted++;
+                    if (hasOpenHint(t.name, c)) s.suggested++;
+                    if (pending.has(keyOf(t.name, c.name))) s.dirty++;
+                }
+                m.set(t.name, s);
+            }
+            return m;
+        }
+
+        function protTotals(stats) {
+            const n = { total: 0, open: 0, restricted: 0, suggested: 0 };
+            stats.forEach(s => { n.open += s.open; n.restricted += s.restricted; n.suggested += s.suggested; });
+            n.total = n.open + n.restricted;
+            return n;
+        }
+
+        function rowVisible(t, c, q) {
+            const lv = levelNow(t.name, c);
+            if (protFilter === 'open' && lv !== 'open') return false;
+            if (protFilter === 'restricted' && lv === 'open') return false;
+            if (protFilter === 'suggested' && !hasOpenHint(t.name, c)) return false;
+            if (protFilter === 'changed' && !pending.has(keyOf(t.name, c.name))) return false;
+            if (q && !(c.name.toLowerCase().includes(q) || t.name.toLowerCase().includes(q))) return false;
+            return true;
+        }
+
+        function rowHtml(t, c, q) {
+            const lv = levelNow(t.name, c);
+            const dirty = pending.has(keyOf(t.name, c.name));
+            // 欄名下面那一行：只在有話要說的時候才有內容
+            let note = '';
+            if (dirty) note =`原本：${esc(LEVEL_LABEL[c.level] || c.level)} → ${esc(LEVEL_LABEL[lv] || lv)}　`
+                + (isLoosening(c.level, lv) ? '<span class="loosen">放寬，儲存時要你確認</span>' : '收緊');
+            else if (c.source === 'explicit') note = '你設定的';
+            else if (c.source === 'pattern') note = `通用規則 ${esc(c.rule)}`;
+            const hint = hasOpenHint(t.name, c) && canEdit()
+                ? `<span class="hintwrap"><button class="hint" type="button" data-hint="${esc(c.suggested)}" title="${esc(c.suggestedWhy)}">建議：${esc(LEVEL_LABEL[c.suggested] || c.suggested)}</button>`
+                + '<button class="skip" type="button" data-skip title="維持開放，之後不再提示這一欄">略過</button></span>' : '';
+            const buttons = LEVELS.map(l => {
+                const off = l.key === 'aggregateOnly' && !c.numeric;
+                return `<button type="button" role="radio" aria-checked="${l.key === lv}" data-level="${l.key}" class="${l.key === lv ? 'on' : ''}"`
+                     + ` title="${off ? '只有數字欄位能用' : l.tip}"${off || !canEdit() ? ' disabled' : ''}>${l.label}</button>`;
+            }).join('');
+            return `<li class="prow${lv === 'open' ? '' : ' restricted'}${dirty ? ' dirty' : ''}${q && c.name.toLowerCase().includes(q) ? ' hit' : ''}" data-c="${esc(c.name)}">
+                        <div class="row-main">
+                            <div class="row-name">${lv === 'open' ? '' : svg('lock', 'lock')}${esc(c.name)}${c.isHidden ? '<span class="badge">隱藏</span>' : ''}</div>
+                            <div class="src">${esc(TYPE_LABEL[c.dataType] || c.dataType)}${note ? ' · ' + note : ''}</div>
+                        </div>
+                        ${hint}
+                        <div class="seg" role="radiogroup" aria-label="${esc(c.name)} 的保護等級">${buttons}</div>
+                    </li>`;
+        }
+
+        function tableRowsHtml(t, q) {
+            const rows = t.columns.filter(c => rowVisible(t, c, q)).map(c => rowHtml(t, c, q)).join('');
+            return rows || '<li class="empty-row">這張表沒有符合篩選條件的欄位</li>';
+        }
+
+        // 預設要不要攤開這張表。budget.left：這次重畫還能攤開幾列 ——
+        // 上千列一起畫會頓，所以有搜尋或篩選時由上往下攤，攤到額度用完為止，其餘的只留表頭。
+        function isTableOpen(t, stats, total, narrowed, visible, budget) {
+            if (tableOpen.has(t.name)) return tableOpen.get(t.name);
+            if (narrowed) return visible <= budget.left;
+            if (total <= 300) return true;                   // 欄位不多：全部攤開，一眼看完
+            const s = stats.get(t.name);
+            return s.restricted > 0 || s.suggested > 0;      // 欄位很多：只攤開有受限或有建議的表
+        }
+
+        const tableCountHtml = s => (s.restricted ? `<span class="r">受限 ${s.restricted}</span> · ` : '')
+            + `開放 ${s.open}` + (s.suggested ? ` · <span class="s">建議 ${s.suggested}</span>` : '');
+
+        function chipsHtml(n) {
+            const chip = (key, label, count, todo) =>
+                `<button class="chip${protFilter === key ? ' active' : ''}${todo ? ' todo' : ''}" type="button" data-filter="${key}">${label} <b>${count}</b></button>`;
+            return chip('all', '全部', n.total) + chip('open', '開放', n.open) + chip('restricted', '受限', n.restricted)
+                 + (n.suggested ? chip('suggested', '有建議', n.suggested, true) : '')
+                 + (pending.size ? chip('changed', '未儲存', pending.size, true) : '');
+        }
+
+        function renderProtection() {
+            if (!prot) return;
+            const q = currentQuery();
+            const stats = protTableStats();
+            const n = protTotals(stats);
+            // 篩選的對象沒了（變更都儲存或放棄了、建議都處理完了）就回到全部，不要留下一片空白
+            if ((protFilter === 'changed' && pending.size === 0) || (protFilter === 'suggested' && n.suggested === 0)) protFilter = 'all';
+            const narrowed = !!q || protFilter !== 'all';
+            const lim = k => esc(pick(prot.limits, k, k[0].toUpperCase() + k.slice(1)) ?? '');
+            const banner = (tone, icon, html, buttons = '', attrs = '') =>
+                `<div class="notice${tone === 'warn' ? ' warn' : ''}"${attrs}>${svg(icon)}<span class="grow">${html}</span>${buttons}</div>`;
+
+            const notices = [];
+            if (protNotice) notices.push(banner(protNotice.tone, protNotice.tone === 'warn' ? 'alert' : 'check', esc(protNotice.text)));
+            if (prot.problem) notices.push(banner('warn', 'alert',
+                '這份模型的保護設定檔讀不出來。為了安全，AI 的查詢現在全部被擋下。按「重設」清掉重來（會跳出確認視窗）。',
+                '<button class="btn btn-ghost btn-sm" type="button" data-reset>重設</button>'));
+            if (!prot.enabled) notices.push(banner('warn', 'alert',
+                '<b>資料保護目前是關閉的</b>：AI 可以讀到任何欄位的內容，這一頁的設定不會生效。要開啟，把 pbibridge_csharp\\appsettings.json 裡 DataProtection 的 Enabled 改成 true，關掉黑窗，再重新雙擊啟動檔。'));
+            if (!prot.canSave) notices.push(banner('', 'alert',
+                '服務認不出這份報表（沒有檔名，模型裡也還沒有可以辨識的欄位），設定沒有地方記。先在 Power BI 按 Ctrl+S 存檔，再回來按「重新掃描」。'));
+            if (prot.inheritedFrom) notices.push(banner('', 'check',
+                `這份模型沿用了先前存下來的設定（當時的檔案：${esc(prot.inheritedFrom)}）。同一份模型換了位置、改了檔名，或這次是從 Power BI 裡面開啟的，設定都會跟著它。`));
+            if (prot.stale.length) notices.push(banner('', 'alert',
+                `有 ${prot.stale.length} 筆設定對不到現在的欄位（可能改名或刪除了）。受限的設定仍會套用到同名的欄位。`,
+                '<button class="btn btn-ghost btn-sm" type="button" data-clear-stale>清除這些設定</button>'));
+            if (canEdit() && prot.enabled && !prot.configured && !local.reviewed) notices.push(banner('', 'shield',
+                '<b>這份模型還沒設定過。</b>現在只有通用規則在擋，而通用規則只認得英文欄名（customer、amount…）—— 中文欄位幾乎都是開放的。看一遍下面的欄位，把不該讓 AI 看內容的設成受限。',
+                '<button class="btn btn-ghost btn-sm" type="button" data-reviewed title="這份模型不需要調整：不再顯示這則提醒">看過了，不用改</button>'));
+            if (canEdit()) notices.push(banner('', 'shield',
+                `有 <b id="sugCount">${n.suggested}</b> 個開放中的欄位，名稱看起來像人或公司、備註、金額。建議只會收緊，不會放寬；套用後還要按「儲存」才生效。`,
+                '<button class="btn btn-ghost btn-sm" type="button" data-filter="suggested">先看一下</button>'
+                + '<button class="btn btn-primary btn-sm" type="button" data-apply-suggestions>套用全部建議</button>',
+                ` id="sugNotice"${n.suggested ? '' : ' hidden'}`));
+
+            const visibleOf = new Map(prot.tables.map(t => [t.name, t.columns.filter(c => rowVisible(t, c, q)).length]));
+            let shown = 0;
+            visibleOf.forEach(v => { shown += v; });
+            const budget = { left: 300 };
+            let folded = 0;                      // 因為額度用完而沒攤開的表
+            const tablesHtml = prot.tables.map(t => {
+                // 沒有東西可列的表不畫：被搜尋或篩選濾光的，以及只放量值、沒有欄位的
+                const visible = visibleOf.get(t.name);
+                if (visible === 0 && (narrowed || t.columns.length === 0)) return '';
+                const isOpen = isTableOpen(t, stats, n.total, narrowed, visible, budget);
+                if (isOpen) budget.left -= visible; else if (narrowed) folded++;
+                return `<details class="card ptable" data-table="${esc(t.name)}"${isOpen ? ' open' : ''}>
+                    <summary>
+                        ${svg('chevron', 'caret')}
+                        <span class="grow"><span class="tname">${esc(t.name)}</span>
+                            <span class="tcount">${tableCountHtml(stats.get(t.name))}</span></span>
+                    </summary>
+                    <ul class="rows">${isOpen ? tableRowsHtml(t, q) : ''}</ul>
+                </details>`;
+            }).join('');
+
+            // 一次設定很多欄：對象是「現在列出來的全部」。只收緊 —— 放寬要逐列點，確認視窗才列得完。
+            let bulk = '';
+            if (canEdit() && narrowed && shown > 0) bulk = `<div class="bulk"><span>把列出的 <b>${shown}</b> 個欄位設為</span>
+                        <button class="btn btn-ghost btn-sm" type="button" data-bulk="pseudonym">換成代號</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-bulk="countOnly">只能計數</button>
+                        <button class="btn btn-ghost btn-sm" type="button" data-bulk="aggregateOnly">只能彙總</button>
+                        ${protFilter === 'suggested' ? '<button class="btn btn-ghost btn-sm" type="button" data-skip-listed>這些都維持開放</button>' : ''}
+                        <span class="fine">只會收緊；會變成放寬的不動。</span></div>`;
+            else if (canEdit() && n.total > 30) bulk = '<div class="bulk muted">欄位很多？先用右上角的搜尋或上面的篩選縮小範圍，就能把列出來的欄位一次設好。</div>';
+
+            const empty = `<div class="empty-row">${q ? `沒有符合「${esc(q)}」的欄位` : '沒有符合的欄位'}</div>`;
+            const main = $('mainContent');
+            const keepScroll = main.querySelector('.prot') ? main.scrollTop : 0;
+            main.innerHTML = `
+                <div class="page prot">
+                    <div class="page-head">
+                        <div>
+                            <h1>資料保護</h1>
+                            <p>AI 在雲端，它讀到的內容都會離開這台電腦。欄位名稱 AI 一定看得到；這裡決定的是每個欄位「裡面的內容」它能看到多少。</p>
+                        </div>
+                        <div class="sync"><span class="dot"></span>${esc(prot.file)}${prot.pathKnown ? '' : '（路徑不明）'} · ${prot.savedAt ? '上次儲存 ' + esc(prot.savedAt.slice(0, 16)) : '尚未設定'}</div>
+                    </div>
+                    ${notices.join('')}
+                    <details class="guide"${(guideOpen ?? !prot.configured) ? ' open' : ''}>
+                        <summary>四種等級是什麼？怎麼設定？</summary>
+                        <div class="levels">
+                            <div class="level open"><h3>開放</h3>
+                                <p>AI 可以直接讀內容（逐列明細每次最多 ${lim('maxDetailRows')} 列，分組彙總 ${lim('maxAggregateRows')} 列）—— 多問幾次就讀得完，所以請當作它全部看得到。</p>
+                                <div class="eg">產品線＝筆電、桌機、伺服器</div></div>
+                            <div class="level"><h3>換成代號</h3>
+                                <p>AI 可以數有幾個、按它分組、排出前幾名；看不到真正的名字。</p>
+                                <div class="eg">ID_3FA2B81C07｜12,345,678</div>
+                                <p class="fit">適合客戶、經銷商、業務員的名稱。代號不是加密：同一個客戶永遠是同一個代號，客戶不多或特徵明顯時還是猜得出是誰。代號是誰，看黑窗。</p></div>
+                            <div class="level"><h3>只能計數</h3>
+                                <p>AI 可以數有幾個、有幾筆是空的；不能列出內容，也不能按它分組。</p>
+                                <div class="eg">客戶數＝1,503</div>
+                                <p class="fit">適合電話、Email、地址、備註 —— AI 不需要看內容的欄位。</p></div>
+                            <div class="level"><h3>只能彙總</h3>
+                                <p>只有數字欄位能選。AI 可以加總、平均、取最大最小，也可以按別的欄位分組來算（最多 ${lim('maxRowsWithMoney')} 列）；不能一筆一筆列出來。</p>
+                                <div class="eg">筆電｜總額 12,345,678</div>
+                                <p class="fit">注意：條件篩到只剩一筆時，加總就等於那一筆。</p></div>
+                        </div>
+                        <h4>三個步驟</h4>
+                        <ol>
+                            <li>按「套用全部建議」—— 名稱像客戶、聯絡方式、備註、金額的欄位會先標成受限。</li>
+                            <li>用搜尋補漏：打「客戶」「金額」這類字，把列出來的欄位一次設好。看到誤判的，點回「開放」。</li>
+                            <li>按「儲存」。收緊馬上生效；放寬會跳出 Windows 確認視窗，你按「是」才算數。</li>
+                        </ol>
+                        <p class="fine">為什麼放寬要多按一次：AI 和這個頁面用的是同一把鑰匙，少了你親手按的那一下，AI 可以自己把保護關掉。確認視窗是服務自己跳出來的，只有坐在電腦前的人按得到 —— 所以你沒有按儲存卻跳出視窗時，請按「否」。<br>
+                        做不到的事：「只能計數」擋的是列出與分組，AI 仍然可以問「有沒有叫某某的客戶」這種答案是數字的問題。</p>
+                    </details>
+                    <div class="prot-toolbar">${chipsHtml(n)}</div>
+                    ${bulk}
+                    <div id="protTables">${tablesHtml || empty}</div>
+                    ${folded ? `<div class="empty-row">還有 ${folded} 張表收合著（列太多，一次全攤開會頓）—— 點表名展開，或把搜尋範圍再縮小一點。上面的「把列出的欄位設為…」仍然涵蓋全部 ${shown} 個。</div>` : ''}
+                </div>`;
+            main.scrollTop = keepScroll;
+            autoOpened = new WeakSet(main.querySelectorAll('details[open]'));
+            updateSaveBar();
+        }
+
+        function pendingSplit() {
+            const tighten = [], loosen = [];
+            for (const [k, to] of pending) {
+                const [Table, Column] = k.split(SEP);
+                const from = findCol(Table, Column)?.level ?? 'open';
+                (isLoosening(from, to) ? loosen : tighten).push({ Table, Column, Level: to, from });
+            }
+            // 和伺服器用同一個順序（照確認視窗那一行的文字逐字元比），等待畫面才能和視窗逐行對照
+            const line = c => changeLine(c.Table, c.Column, c.from, c.Level);
+            const byLine = (a, b) => { const x = line(a), y = line(b); return x < y ? -1 : x > y ? 1 : 0; };
+            return { tighten: tighten.sort(byLine), loosen: loosen.sort(byLine) };
+        }
+
+        function updateSaveBar() {
+            const bar = $('saveBar');
+            updateProtDot();
+            if (view !== 'protection' || !prot || pending.size === 0) { bar.hidden = true; return; }
+            const { tighten, loosen } = pendingSplit();
+            const wait = Math.ceil((retryAt - Date.now()) / 1000);
+            const rounds = Math.ceil(loosen.length / prot.maxLoosen);
+            $('saveMsg').innerHTML = `<b>${pending.size}</b> 項未儲存：收緊 ${tighten.length} · 放寬 ${loosen.length}`
+                + (loosen.length ? `<span class="loosen">這次有放寬的項目。按「儲存」後 Windows 會跳出確認視窗，要你本人按「是」才會生效${rounds > 1 ? `（一次最多 ${prot.maxLoosen} 欄，會分 ${rounds} 次問）` : ''}。</span>` : '');
+            // 剛被拒絕或逾時：伺服器短時間內不會再跳視窗。只剩放寬要送的話，等倒數完再讓人按
+            const mustWait = wait > 0 && tighten.length === 0;
+            $('saveBtn').disabled = saving || mustWait;
+            $('saveBtn').textContent = mustWait ? `${wait} 秒後可以再試` : '儲存';
+            $('discardBtn').disabled = saving;
+            bar.hidden = false;
+        }
+
+        let retryTimer = null;
+        function startRetryCountdown(seconds) {
+            retryAt = Date.now() + seconds * 1000;
+            clearInterval(retryTimer);
+            retryTimer = setInterval(() => {
+                if (Date.now() >= retryAt) { retryAt = 0; clearInterval(retryTimer); }
+                updateSaveBar();
+            }, 1000);
+        }
+
+        function sameNameOpen(tName, c) {
+            const name = normName(c.name), out = [];
+            for (const t of prot.tables) for (const x of t.columns)
+                if (!(t.name === tName && x.name === c.name) && normName(x.name) === name && levelNow(t.name, x) === 'open') out.push([t, x]);
+            return out;
+        }
+
+        // 改一個欄位：只重畫那一列與各處的計數，不重畫整頁（一千多欄時整頁重畫會頓）
+        function setLevel(tName, cName, level, li) {
+            const t = findProtTable(tName);
+            const c = t?.columns.find(x => x.name === cName);
+            if (!c || !canEdit() || saving || (level === 'aggregateOnly' && !c.numeric)) return;
+            const k = keyOf(tName, cName);
+            if (level === c.level) pending.delete(k); else pending.set(k, level);
+            protNotice = null;
+            if (li) {
+                if (li.nextElementSibling?.classList.contains('samehint')) li.nextElementSibling.remove();
+                li.insertAdjacentHTML('afterend', rowHtml(t, c, currentQuery()));
+                const fresh = li.nextElementSibling;
+                li.remove();
+                // 同名的欄位散在別張表：只設這一欄的話，其他表的照樣讀得到
+                const twins = level === 'open' ? [] : sameNameOpen(tName, c);
+                if (twins.length) {
+                    const where = [...new Set(twins.map(([tt]) => tt.name))];
+                    fresh.insertAdjacentHTML('afterend', `<li class="samehint"><span class="grow">另外 ${twins.length} 個欄位也叫「${esc(c.name)}」（${esc(where.slice(0, 3).join('、'))}${where.length > 3 ? ` 等 ${where.length} 張表` : ''}），目前是開放。</span>
+                        <button class="btn btn-ghost btn-sm" type="button" data-same-apply="${esc(level)}">一起設為${esc(LEVEL_LABEL[level])}</button></li>`);
+                }
+            }
+            refreshProtCounts();
+        }
+
+        // 略過建議：這一欄維持開放，這個瀏覽器不再提示它
+        function dismissHint(tName, cName, li) {
+            const t = findProtTable(tName);
+            const c = t?.columns.find(x => x.name === cName);
+            if (!c) return;
+            local.dismissed.add(keyOf(tName, cName));
+            saveLocal();
+            if (li) li.outerHTML = rowHtml(t, c, currentQuery());
+            refreshProtCounts();
+        }
+
+        function refreshProtCounts() {
+            const stats = protTableStats();
+            const n = protTotals(stats);
+            document.querySelectorAll('.ptable').forEach(el => {
+                const s = stats.get(el.dataset.table);
+                const span = el.querySelector('.tcount');
+                if (s && span) span.innerHTML = tableCountHtml(s);
+            });
+            const bar = document.querySelector('.prot-toolbar');
+            if (bar) bar.innerHTML = chipsHtml(n);
+            if ($('sugNotice')) { $('sugNotice').hidden = n.suggested === 0; $('sugCount').textContent = n.suggested; }
+            const q = currentQuery();
+            renderSidebar(q ? tables.filter(t => tableName(t).toLowerCase().includes(q) || countMatches(t, q) > 0) : tables, q);
+            updateSaveBar();
+        }
+
+        function scrollToProtTable(name) {
+            const el = [...document.querySelectorAll('.ptable')].find(d => d.dataset.table === name);
+            if (!el) return;
+            if (!el.open) el.open = true;        // 會觸發 toggle，由 onProtToggle 補上欄位列
+            el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+        }
+
+        function onProtToggle(e) {
+            const el = e.target;
+            if (view !== 'protection' || !prot) return;
+            // 畫面重畫時本來就展開的區塊也會送出 toggle。那不是使用者點的，不能記成「他手動展開過」——
+            // 記了的話，之後每次重畫都會照樣全部展開，一次畫幾百列的上限就沒用了
+            if (autoOpened.delete(el) && el.open) return;
+            if (el.classList?.contains('guide')) { guideOpen = el.open; return; }
+            if (!el.classList?.contains('ptable')) return;
+            tableOpen.set(el.dataset.table, el.open);
+            const ul = el.querySelector('ul.rows');
+            if (el.open && ul && !ul.children.length) {
+                const t = findProtTable(el.dataset.table);
+                if (t) ul.innerHTML = tableRowsHtml(t, currentQuery());
+            }
+        }
+
+        // 現在列出來的欄位（套用搜尋與篩選之後）。先收集再動手 —— 篩選條件本身會跟著 pending 變
+        function listedColumns() {
+            const q = currentQuery(), out = [];
+            for (const t of prot.tables) for (const c of t.columns) if (rowVisible(t, c, q)) out.push([t, c]);
+            return out;
+        }
+
+        function bulkSet(level) {
+            let marked = 0, untouched = 0;
+            for (const [t, c] of listedColumns()) {
+                const k = keyOf(t.name, c.name);
+                if ((level === 'aggregateOnly' && !c.numeric) || isLoosening(c.level, level)) { untouched++; continue; }
+                if (level === c.level) { if (pending.delete(k)) marked++; continue; }
+                if (pending.get(k) !== level) { pending.set(k, level); marked++; }
+            }
+            protNotice = null;
+            renderProtection(); refreshProtCounts();
+            showToast(`已標記 ${marked} 個。` + (untouched ? `${untouched} 個沒有動（會變成放寬，或不是數字欄位）。` : '') + '按「儲存」才會生效', 3200);
+        }
+
+        function onProtClick(e) {
+            if (!prot || saving) return;
+            const seg = e.target.closest('.seg [data-level]');
+            const hintBtn = e.target.closest('[data-hint]');
+            const skipBtn = e.target.closest('[data-skip]');
+            if (seg || hintBtn || skipBtn) {
+                const li = e.target.closest('.prow');
+                const tName = li?.closest('.ptable')?.dataset.table;
+                if (!li || !tName) return;
+                if (skipBtn) dismissHint(tName, li.dataset.c, li);
+                else setLevel(tName, li.dataset.c, seg ? seg.dataset.level : hintBtn.dataset.hint, li);
+                return;
+            }
+            const same = e.target.closest('[data-same-apply]');
+            if (same) {
+                const row = same.closest('.samehint').previousElementSibling;
+                const tName = row?.closest('.ptable')?.dataset.table;
+                const c = tName && findCol(tName, row.dataset.c);
+                if (!c) return;
+                const level = same.dataset.sameApply;
+                let done = 0;
+                for (const [t, x] of sameNameOpen(tName, c)) {
+                    const k = keyOf(t.name, x.name);
+                    if ((level === 'aggregateOnly' && !x.numeric) || isLoosening(x.level, level)) continue;
+                    if (level === x.level) pending.delete(k); else pending.set(k, level);
+                    done++;
+                }
+                renderProtection(); refreshProtCounts();
+                showToast(`已標記另外 ${done} 個同名欄位。按「儲存」才會生效`, 3200);
+                return;
+            }
+            const filter = e.target.closest('[data-filter]');
+            if (filter) { protFilter = filter.dataset.filter; tableOpen.clear(); renderProtection(); return; }
+            if (e.target.closest('[data-apply-suggestions]')) {
+                let marked = 0;
+                for (const t of prot.tables) for (const c of t.columns)
+                    if (hasOpenHint(t.name, c)) { pending.set(keyOf(t.name, c.name), c.suggested); marked++; }
+                protFilter = 'changed'; tableOpen.clear(); protNotice = null;
+                renderProtection(); refreshProtCounts();
+                showToast(`已標記 ${marked} 個。看過一遍，誤判的點回「開放」，再按「儲存」`, 3600);
+                return;
+            }
+            const bulkBtn = e.target.closest('[data-bulk]');
+            if (bulkBtn) { bulkSet(bulkBtn.dataset.bulk); return; }
+            if (e.target.closest('[data-skip-listed]')) {
+                let marked = 0;
+                for (const [t, c] of listedColumns())
+                    if (hasOpenHint(t.name, c)) { local.dismissed.add(keyOf(t.name, c.name)); marked++; }
+                saveLocal();
+                renderProtection(); refreshProtCounts();
+                showToast(`已略過 ${marked} 個建議，這些欄位維持開放`, 3200);
+                return;
+            }
+            if (e.target.closest('[data-reviewed]')) {
+                local.reviewed = true;
+                saveLocal();
+                renderProtection();
+                return;
+            }
+            if (e.target.closest('[data-clear-stale]')) {
+                runWholeChange({ Changes: prot.stale.map(s => ({ Table: s.table, Column: s.column, Level: 'default' })) });
+                return;
+            }
+            if (e.target.closest('[data-reset]')) runWholeChange({ Reset: true });
+        }
+
+        // ── 儲存 ────────────────────────────────────────────────────────
+        async function postProtection(body) {
+            try {
+                const res = await fetch('/api/protection', {
+                    method: 'POST', headers: { ...apiHeaders(), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+                });
+                const text = await res.text();
+                let j = null;
+                try { j = JSON.parse(text); } catch (e) { }
+                if (res.ok) return { ok: true, data: j || {} };
+                if (res.status === 401) return { ok: false, reason: '金鑰不符：服務可能重新啟動過，請重新整理頁面（F5）。' };
+                const o = j && typeof j === 'object' ? j : null;
+                return {
+                    ok: false,
+                    answer: String(pick(o, 'answer', 'Answer') || '').toLowerCase(),
+                    retryAfter: Number(pick(o, 'retryAfterSeconds', 'RetryAfterSeconds')) || 0,
+                    reason: (o ? pick(o, 'reason', 'Reason') || pick(o, 'error', 'Error') || pick(o, 'detail', 'Detail')
+                               : typeof j === 'string' ? j : text) || `伺服器回應 ${res.status}`,
+                };
+            } catch (e) {
+                return { ok: false, reason: `沒有連上服務：${e.message}` };
+            }
+        }
+
+        // 沒獲得同意時要對使用者說什麼。伺服器回的 answer 分得出是按了否、沒人回答，還是根本跳不出視窗。
+        // what：這次沒有發生的事（「放寬的項目沒有變更，還留在待儲存」／「沒有做任何變更」）
+        function refusalText(r, what) {
+            const s = r.retryAfter || 30;
+            switch (r.answer) {
+                case 'no':          return `你選了「否」，${what}。${s} 秒後可以再送一次。`;
+                case 'timeout':     return `確認視窗沒有人回答，當成「否」，${what}。視窗可能在另一個螢幕，或沒有跳到最前面 —— ${s} 秒後再試一次，然後按 Alt+Tab 找它。`;
+                case 'busy':        return '已經有另一個確認視窗開著 —— 它不是這次跳出來的（多半是 AI 送出的請求）。先看清楚那個視窗在問什麼，不是你要的就按「否」，再回來試一次。';
+                case 'coolingdown': return `剛剛才按過「否」或逾時，${s} 秒後可以再試。${what}。`;
+                case 'unavailable': return '這台電腦現在跳不出確認視窗，所以沒辦法放寬。收緊不受影響。';
+                default:            return r.reason;
+            }
+        }
+
+        let waitTimer = null;
+        // lines：這一次送出的放寬清單；null 表示清單由伺服器決定（重設、清除殘留設定）。
+        // unsure：不確定會不會跳視窗（照理不會、或要看伺服器怎麼算）—— 這時不倒數，也不說「請去回答」，
+        //         免得使用者去找一個不存在的視窗，或把別人送出的視窗當成自己的來回答
+        function showWaiting(lines, round, rounds, unsure = false) {
+            const until = Date.now() + (prot?.confirmTimeout || 120) * 1000;
+            $('waitTitle').textContent = unsure ? '正在儲存…'
+                : '請到 Windows 跳出的確認視窗回答' + (rounds > 1 ? `（第 ${round}／${rounds} 次）` : '');
+            $('waitWhere').textContent = unsure
+                ? '如果 Windows 跳出確認視窗（標題是「PBI AI Bridge — 請確認要放寬資料保護」），請到那裡回答。它可能在另一個螢幕，或沒有跳到最前面 —— 按 Alt+Tab 找。'
+                : '標題是「PBI AI Bridge — 請確認要放寬資料保護」。沒看到？它可能在另一個螢幕，或沒有跳到最前面 —— 按 Alt+Tab 找，或看工作列有沒有多出一顆按鈕。';
+            $('waitListWrap').hidden = !lines;
+            $('waitList').innerHTML = (lines || []).map(l => `<li>${esc(l)}</li>`).join('');
+            $('waitCount').hidden = unsure;
+            const tick = () => { $('waitLeft').textContent = Math.max(0, Math.ceil((until - Date.now()) / 1000)); };
+            tick();
+            clearInterval(waitTimer);
+            waitTimer = setInterval(tick, 500);
+            $('waiting').hidden = false;
+        }
+        function hideWaiting() { clearInterval(waitTimer); $('waiting').hidden = true; }
+
+        function setSaving(on) {
+            saving = on;
+            document.body.classList.toggle('saving', on);
+            updateSaveBar();
+        }
+
+        // 儲存之後重新讀一次，並把已經存進去的項目從待儲存拿掉（沒送成的留著）
+        async function reloadProtection() {
+            const gen = loadGen;
+            try {
+                const p = await fetchProtection();
+                if (gen !== loadGen) return;                 // 這段時間使用者換了模型：這份回應已經不是現在這一份的
+                setProt(p);
+                for (const [k, to] of [...pending]) {
+                    const [tn, cn] = k.split(SEP);
+                    const c = findCol(tn, cn);
+                    if (!c || to === c.level) pending.delete(k);
+                }
+            } catch (e) {
+                const extra = `重新讀取設定時失敗（${e.message}），畫面上的等級可能不是最新的 —— 請按「重新掃描」。`;
+                protNotice = { tone: 'warn', text: protNotice ? protNotice.text + ' ' + extra : extra };
+            }
+            tableOpen.clear();
+            handleSearch();
+        }
+
+        // 按一次「儲存」分兩段送：先送收緊（不必確認，立刻生效），再送放寬（每次最多 maxLoosen 欄，各跳一次確認視窗）。
+        // 這樣錯過確認視窗時，丟掉的只有放寬 —— 第一次設定收緊的那幾百欄不會跟著沒存到。
+        async function saveProtection() {
+            if (!prot || pending.size === 0 || saving) return;
+            const { tighten, loosen } = pendingSplit();
+            const strip = list => list.map(({ Table, Column, Level }) => ({ Table, Column, Level }));
+            let tightened = 0, loosened = 0, failure = null;
+            setSaving(true);
+            protNotice = null;
+            try {
+                if (tighten.length) {
+                    // 照理不會跳確認視窗；萬一伺服器的判斷和這裡不同，等太久就把指路的畫面叫出來
+                    const slow = setTimeout(() => showWaiting(null, 1, 1, true), 1500);
+                    const r = await postProtection({ Changes: strip(tighten) });
+                    clearTimeout(slow); hideWaiting();
+                    if (!r.ok) failure = r;
+                    else { tightened = tighten.length; tighten.forEach(c => pending.delete(keyOf(c.Table, c.Column))); }
+                }
+                const wait = Math.ceil((retryAt - Date.now()) / 1000);
+                if (!failure && loosen.length && wait > 0) failure = { answer: 'coolingdown', retryAfter: wait };
+                const rounds = Math.ceil(loosen.length / prot.maxLoosen);
+                for (let i = 0; i < rounds && !failure; i++) {
+                    const part = loosen.slice(i * prot.maxLoosen, (i + 1) * prot.maxLoosen);
+                    showWaiting(part.map(c => changeLine(c.Table, c.Column, c.from, c.Level)), i + 1, rounds);
+                    const r = await postProtection({ Changes: strip(part) });
+                    hideWaiting();
+                    if (!r.ok) failure = r;
+                    else { loosened += part.length; part.forEach(c => pending.delete(keyOf(c.Table, c.Column))); }
+                }
+                if (failure) {
+                    if (failure.retryAfter && failure.answer !== 'busy') startRetryCountdown(failure.retryAfter);
+                    const done = [tightened ? `收緊的 ${tightened} 項已經生效` : '', loosened ? `已放寬 ${loosened} 項` : ''].filter(Boolean).join('，');
+                    protNotice = {
+                        tone: 'warn',
+                        text: refusalText(failure, loosened ? '其餘放寬的項目沒有變更，還留在待儲存' : '放寬的項目沒有變更，還留在待儲存')
+                            + (done ? ` ${done}。` : ''),
+                    };
+                }
+                // 重新讀完之前都算「儲存中」：這段時間畫面上還是舊的等級，點了會被新資料蓋掉
+                if (tightened || loosened) {
+                    await reloadProtection();
+                    if (!failure) showToast(`已儲存：收緊 ${tightened} 欄、放寬 ${loosened} 欄`, 2600);
+                }
+            } finally {
+                hideWaiting();
+                setSaving(false);
+                if (prot && view === 'protection') renderProtection();
+            }
+        }
+
+        // 重設、清除殘留設定：會變寬鬆的欄位由伺服器算，清單只出現在確認視窗裡
+        async function runWholeChange(body) {
+            if (saving) return;
+            setSaving(true);
+            protNotice = null;
+            try {
+                const slow = setTimeout(() => showWaiting(null, 1, 1, true), 600);
+                const r = await postProtection(body);
+                clearTimeout(slow); hideWaiting();
+                if (!r.ok) {
+                    if (r.retryAfter && r.answer !== 'busy') startRetryCountdown(r.retryAfter);
+                    protNotice = { tone: 'warn', text: refusalText(r, '沒有做任何變更') };
+                    return;
+                }
+                if (body.Reset) pending.clear();
+                await reloadProtection();
+                showToast(pick(r.data, 'message', 'Message') || '已儲存', 2600);
+            } finally {
+                hideWaiting();
+                setSaving(false);
+                if (prot && view === 'protection') renderProtection();
+            }
         }
 
         // ── 複製 ────────────────────────────────────────────────────────
@@ -640,7 +1588,7 @@
         }
 
         let toastTimer;
-        function showToast(message) {
+        function showToast(message, ms = 1800) {
             const toast = $('toast');
             toast.innerHTML = svg('check');
             const span = document.createElement('span');
@@ -648,7 +1596,7 @@
             toast.append(span);
             toast.classList.add('show');
             clearTimeout(toastTimer);
-            toastTimer = setTimeout(() => toast.classList.remove('show'), 1800);
+            toastTimer = setTimeout(() => toast.classList.remove('show'), ms);
         }
     </script>
 </body>
