@@ -196,6 +196,134 @@ function Use-PbiInstance {
     }
 }
 
+function Get-PbiOverview {
+    <#
+      開工用的一頁摘要：選定的 Power BI、模型大小、健檢、資料保護 —— 一次呼叫看完。
+      取代開工時原本要分開跑的 Test-PbiBridge / Get-PbiInstances / Get-PbiSchema / Test-PbiModel / Get-PbiProtection。
+      只輸出結構與計數：不含 M 腳本，也不含任何欄位的內容。
+
+      -Target  同時開了多個 Power BI 時用它選定（檔名片段或 Port），等同先跑 Use-PbiInstance
+      -Tables  資料表清單最多列幾張（預設 30；0＝不列）
+
+      範例：
+        Get-PbiOverview
+        Get-PbiOverview 銷售報表
+    #>
+    param(
+        [Parameter(Position=0)][string]$Target,
+        [int]$Tables = 30
+    )
+    # 屬性不存在時 @($null).Count 會是 1 —— 計數一律經過這裡
+    $count = { param($x) if ($null -eq $x) { 0 } else { @($x).Count } }
+    $brief = { param($e) $s = "$e" -replace '\s+', ' '; if ($s.Length -gt 200) { $s.Substring(0, 200) + '…' } else { $s } }
+
+    try { $all = @((Invoke-PbiApi -Path "/api/instances").Instances) }
+    catch {
+        "❌ 連不上橋接服務 —— 請使用者雙擊 🚀啟動PBI終極儀表板.bat 並保持視窗開啟。"
+        "   （$(& $brief $_)）"
+        return
+    }
+    if ($all.Count -eq 0) {
+        "❌ 服務就緒，但沒有偵測到開著檔案的 Power BI Desktop —— 請使用者先開啟 .pbix / .pbip。"
+        return
+    }
+
+    if ($Target) {
+        Use-PbiInstance $Target
+        if (-not $script:PbiTarget) { return }          # 選不到：Use-PbiInstance 已經說明原因
+    }
+    $cur = $null
+    if ($script:PbiTarget) { $cur = $all | Where-Object { "$($_.port)" -eq "$script:PbiTarget" } | Select-Object -First 1 }
+    if (-not $cur) {
+        if ($all.Count -gt 1) {
+            "⚠️ 有 $($all.Count) 個 Power BI 開著，還沒選定要操作哪一個（選定之前所有請求都會被拒絕）："
+            $all | ForEach-Object { "   Port {0,-6} {1}  [{2}]" -f $_.port, $_.fileName, $_.kind }
+            "   選定並看摘要：Get-PbiOverview <檔名片段或 Port>"
+            return
+        }
+        $cur = $all[0]
+    }
+
+    "📂 $($cur.fileName)  (Port $($cur.port), $($cur.kind))"
+    if ($cur.filePath) { "   路徑：$($cur.filePath)" }
+    else { "   ⚠️ 路徑不明（從 Power BI 裡面開啟的）：Save-PbiModel、Test-PbiReport 不能用，快照與 M 備份重開後找不回來" }
+
+    try {
+        $schema = Get-PbiSchema
+        $health = Test-PbiModel
+        $prot   = Get-PbiProtection -Raw
+    } catch {
+        "❌ 讀取模型失敗：$(& $brief $_)"
+        return
+    }
+
+    $tbl = @($schema.Tables)
+    $nCols = 0; $nMeas = 0
+    foreach ($t in $tbl) { $nCols += (& $count $t.Columns); $nMeas += (& $count $t.Measures) }
+    "模型：$($tbl.Count) 張表／$nCols 個資料行／$nMeas 個量值／$([int]$health.totalRelationships) 條關聯"
+
+    $f = $health.findings
+    $broken = @(); if ($f -and $null -ne $f.brokenObjects) { $broken = @($f.brokenObjects) }
+    if ($broken.Count -gt 0) {
+        $names = @($broken | Select-Object -First 8 | ForEach-Object { $_.object }) -join '、'
+        "健檢：⛔ 有 $($broken.Count) 個壞掉的公式：$names$(if ($broken.Count -gt 8) { ' …' })"
+    } else {
+        "健檢：沒有壞掉的公式"
+    }
+    if ($f) {
+        $hints = [ordered]@{
+            '雙向關聯'               = (& $count $f.biDirectionalRelationships)
+            '多對多關聯'             = (& $count $f.manyToManyRelationships)
+            '停用的關聯'             = (& $count $f.inactiveRelationships)
+            '同名量值'               = (& $count $f.duplicateMeasureNames)
+            '沒設格式的量值'         = (& $count $f.measuresWithoutFormat)
+            '孤島表'                 = (& $count $f.islandTables)
+            '可能沒用到的資料行'     = (& $count $f.possiblyUnusedColumns)
+            '該改成量值的計算資料行' = (& $count $f.calcColumnsUsingAggregation)
+            '自動日期表'             = [int]$f.autoDateTableCount
+        }
+        $shown = @($hints.Keys | Where-Object { $hints[$_] -gt 0 } | ForEach-Object { "$_ $($hints[$_])" })
+        if ($shown.Count -gt 0) { "   其他建議：$($shown -join '、')（細節：Test-PbiModel）" }
+    }
+
+    $restricted = @{}
+    $by = @{ open = 0; pseudonym = 0; countOnly = 0; aggregateOnly = 0 }
+    foreach ($t in @($prot.tables)) {
+        $n = 0
+        foreach ($c in @($t.columns)) {
+            $lv = "$($c.level)"
+            if ($by.ContainsKey($lv)) { $by[$lv]++ }
+            if ($lv -and $lv -ne 'open') { $n++ }
+        }
+        $restricted["$($t.name)"] = $n
+    }
+    if (-not $prot.enabled) {
+        "資料保護：⚠️ 關閉中（appsettings.json 的 DataProtection:Enabled）—— 查詢可以取出任何欄位的內容"
+    } elseif ($prot.problem) {
+        "資料保護：⛔ 這份模型的設定檔讀不出來，查詢全部會被擋下 —— 請使用者到儀表板的「資料保護」分頁按「重設」"
+    } else {
+        "資料保護：開放 $($by.open)／換成代號 $($by.pseudonym)／只能計數 $($by.countOnly)／只能彙總 $($by.aggregateOnly)"
+        if (-not $prot.configured) {
+            "   ⚠️ 這份模型還沒設定過，只有通用規則在擋（中文欄名幾乎都是開放的）—— 查資料之前先提醒使用者到儀表板設定"
+        }
+        if ($prot.inheritedFrom) {
+            "   設定是靠內容認回來的（當時的檔案：$($prot.inheritedFrom)）—— 請使用者到儀表板掃一眼等級"
+        }
+        $stale = (& $count $prot.stale)
+        if ($stale -gt 0) { "   有 $stale 筆設定對不到現在的欄位（改名或刪除了）" }
+    }
+
+    if ($Tables -gt 0 -and $tbl.Count -gt 0) {
+        "資料表（資料行／量值／受限的資料行）："
+        foreach ($t in ($tbl | Select-Object -First $Tables)) {
+            $r = 0; if ($restricted.ContainsKey("$($t.Name)")) { $r = $restricted["$($t.Name)"] }
+            "   $($t.Name)：$(& $count $t.Columns)／$(& $count $t.Measures)／$r$(if ($t.IsHidden) { '  [隱藏]' })"
+        }
+        if ($tbl.Count -gt $Tables) { "   …還有 $($tbl.Count - $Tables) 張（Get-PbiOverview -Tables $($tbl.Count)）" }
+    }
+    "下一步：查某張表之前先看哪些欄位受限 → Get-PbiProtection -Table <表>；量值 → Get-PbiMeasures | Select-Object Table, Measure, Expression"
+}
+
 # ---------------------------------------------------------------------------
 # 讀取
 # ---------------------------------------------------------------------------
@@ -1030,6 +1158,7 @@ function Invoke-PbiBatch {
 
 function Get-PbiHelp {
     <#  列出可用指令 #>
+    Write-Host "   開工  Get-PbiOverview   ← 一次看完：選定的 PBI、模型大小、健檢、資料保護" -ForegroundColor Yellow
     Write-Host "   實例  Get-PbiInstances / Use-PbiInstance / Get-PbiInfo   ← 同時開多個 PBI 時先用這個" -ForegroundColor Yellow
     Write-Host "   檢查  Test-PbiBridge / Test-PbiModel / Test-PbiReport" -ForegroundColor Gray
     Write-Host "   讀取  Get-PbiSchema / Get-PbiRelationships / Get-PbiMeasures / Get-PbiRoles / Get-PbiExpressions" -ForegroundColor Gray

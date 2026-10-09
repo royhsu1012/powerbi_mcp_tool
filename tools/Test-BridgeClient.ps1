@@ -105,6 +105,16 @@ if (Test-Path -LiteralPath $template) {
     }
 }
 
+# CLAUDE.md 只放常駐的規則，其餘章節搬到 docs\ 讓 AI 用到才讀 —— 指過去的路徑不能是斷的，
+# 否則那一類工作的規範等於不存在
+$claudeMd = Join-Path $root 'CLAUDE.md'
+if (Test-Path -LiteralPath $claudeMd) {
+    $text    = Get-Content -LiteralPath $claudeMd -Raw -Encoding UTF8
+    $refs    = @([regex]::Matches($text, 'docs\\([\w\-]+\.md)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique)
+    $missing = @($refs | Where-Object { -not (Test-Path -LiteralPath (Join-Path $root "docs\$_")) })
+    Check "CLAUDE.md 指到的 docs\ 文件都存在（$($refs.Count) 份）" ($refs.Count -gt 0 -and $missing.Count -eq 0) "找不到：$($missing -join '、')"
+}
+
 # =============================================================================
 # ② 載入橋接函式
 # =============================================================================
@@ -471,6 +481,76 @@ Check 'Invoke-PbiBatch：只有一個操作時 Operations 仍是陣列，巢狀�
     $batch.Json.Operations[0].Args.Expression -ceq "SUM('訂單'[金額])") ""
 Check 'Invoke-PbiBatch：預設任一步失敗就整批不套用（StopOnError = true、不逐步存檔、不是 DryRun）' (
     $batch.Json.StopOnError -eq $true -and $batch.Json.SavePerOp -eq $false -and $batch.Json.DryRun -eq $false) ""
+
+# ── 開工摘要 ────────────────────────────────────────────────────────────────
+# 一次呼叫看完實例、模型大小、健檢、保護等級。只能輸出結構與計數：M 腳本和公式不能跟著出來。
+$script:Covered['Get-PbiOverview'] = $true
+$nopath = [PSCustomObject]@{ port = 53333; fileName = '週報'; filePath = $null; windowTitle = '週報'; kind = 'Unknown' }
+$script:Canned['/api/instances'] = [PSCustomObject]@{ Instances = @($nopath) }
+$script:Canned['/api/schema'] = [PSCustomObject]@{ Tables = @(
+    [PSCustomObject]@{
+        Name = '客戶'; IsHidden = $false; MQuery = 'let 機密連線字串 = 1 in 機密連線字串'
+        Columns  = @([PSCustomObject]@{ Name = '客戶名稱' }, [PSCustomObject]@{ Name = '地區' })
+        Measures = @([PSCustomObject]@{ Name = '客戶數'; Expression = 'COUNTROWS(客戶)' })
+    },
+    [PSCustomObject]@{
+        Name = '訂單'; IsHidden = $true; MQuery = $null
+        Columns  = @([PSCustomObject]@{ Name = '業務員' }, [PSCustomObject]@{ Name = '數量' })
+        Measures = @()
+    }) }
+$script:Canned['/api/validate'] = [PSCustomObject]@{ totalRelationships = 1; findings = [PSCustomObject]@{
+    brokenObjects               = @([PSCustomObject]@{ object = "'客戶'[壞掉的量值]"; kind = 'Measure'; error = '語法錯誤' })
+    biDirectionalRelationships  = @(); manyToManyRelationships = @(); inactiveRelationships = @()
+    duplicateMeasureNames       = @(); measuresWithoutFormat = @("'客戶'[客戶數]"); islandTables = @()
+    possiblyUnusedColumns       = @('a', 'b'); calcColumnsUsingAggregation = @(); autoDateTableCount = 0 } }
+$script:Canned['/api/protection'] = [PSCustomObject]@{
+    enabled = $true; problem = $null; configured = $false; inheritedFrom = $null; stale = @()
+    tables = @(
+        [PSCustomObject]@{ name = '客戶'; columns = @(
+            [PSCustomObject]@{ name = '客戶名稱'; level = 'countOnly' },
+            [PSCustomObject]@{ name = '地區';     level = 'open' }) },
+        [PSCustomObject]@{ name = '訂單'; columns = @(
+            [PSCustomObject]@{ name = '業務員';   level = 'pseudonym' },
+            [PSCustomObject]@{ name = '數量';     level = 'open' }) })
+}
+$script:PbiTarget = $null
+$n = $script:Calls.Count
+$o = @(Get-PbiOverview) -join "`n"
+$paths = @($script:Calls | Select-Object -Skip $n | ForEach-Object { $_.Path })
+Check 'Get-PbiOverview：一次呼叫讀完實例、結構、健檢、保護等級' (
+    ($paths -contains '/api/instances') -and ($paths -contains '/api/schema') -and
+    ($paths -contains '/api/validate') -and ($paths -contains '/api/protection')) "實際呼叫：$($paths -join ', ')"
+Check 'Get-PbiOverview：模型大小與每張表的計數（資料行／量值／受限）' (
+    $o.Contains('2 張表／4 個資料行／1 個量值／1 條關聯') -and $o.Contains('客戶：2／1／1') -and
+    $o.Contains('訂單：2／0／1  [隱藏]')) $o
+Check 'Get-PbiOverview：壞掉的公式列出名稱，其他建議只列有數量的項目' (
+    $o.Contains('1 個壞掉的公式') -and $o.Contains("'客戶'[壞掉的量值]") -and $o.Contains('沒設格式的量值 1') -and
+    $o.Contains('可能沒用到的資料行 2') -and -not $o.Contains('雙向關聯')) $o
+Check 'Get-PbiOverview：各等級的欄數，並提醒「還沒設定過」與「路徑不明」' (
+    $o.Contains('開放 2／換成代號 1／只能計數 1／只能彙總 0') -and $o.Contains('還沒設定過') -and $o.Contains('路徑不明')) $o
+Check 'Get-PbiOverview：不輸出 M 腳本、公式與引擎的錯誤訊息' (
+    -not $o.Contains('機密連線字串') -and -not $o.Contains('COUNTROWS') -and -not $o.Contains('語法錯誤')) ""
+
+$script:Canned['/api/protection'].configured = $true
+$script:Canned['/api/protection'].inheritedFrom = 'C:\舊位置\週報.pbix'
+$o = @(Get-PbiOverview -Tables 1) -join "`n"
+Check 'Get-PbiOverview：設定是靠內容認回來的時候會講；-Tables 限制清單長度' (
+    $o.Contains('C:\舊位置\週報.pbix') -and -not $o.Contains('還沒設定過') -and
+    $o.Contains('還有 1 張') -and -not $o.Contains('訂單：')) $o
+
+$script:Canned['/api/instances'] = [PSCustomObject]@{ Instances = @($one, $two) }
+$n = $script:Calls.Count
+$o = @(Get-PbiOverview) -join "`n"
+$paths = @($script:Calls | Select-Object -Skip $n | ForEach-Object { $_.Path })
+Check 'Get-PbiOverview：開了多個而沒選定 → 只列清單，不去讀任何模型' (
+    $o.Contains('還沒選定') -and $o.Contains('51111') -and $o.Contains('52222') -and
+    -not ($paths -contains '/api/schema')) "輸出：$o；呼叫：$($paths -join ', ')"
+$o = @(Get-PbiOverview 預測 6>$null) -join "`n"
+Check 'Get-PbiOverview：給了目標 → 先選定那一個再讀' (
+    $script:PbiTarget -eq '52222' -and $o.Contains('銷售預測.pbip') -and $o.Contains('C:\b\銷售預測.pbip') -and
+    -not $o.Contains('路徑不明')) $o
+$null = Use-PbiInstance 6>$null
+foreach ($p in '/api/instances', '/api/schema', '/api/validate', '/api/protection') { $script:Canned.Remove($p) }
 
 # =============================================================================
 # ③ 涵蓋率：PBI-Bridge.ps1 裡的每個函式都要有人管
